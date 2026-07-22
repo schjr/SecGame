@@ -1,0 +1,10 @@
+# Godot-generated cache and imports
+.godot/
+
+# Operating-system and editor files
+.DS_Store
+*.tmp
+
+# Local Python environments
+.venv/
+__pycache__/
