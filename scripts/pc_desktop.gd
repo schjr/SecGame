@@ -675,13 +675,17 @@ func close_window(id: String) -> void:
 			processes.erase(pid)
 	refresh_window_borders()
 	refresh_task_buttons()
+	refresh_task_manager_if_open()
 
 func refresh_task_buttons() -> void:
 	var holder := taskbar.find_child("RunningApps", true, false)
+	if holder == null:
+		return
 	for child in holder.get_children():
+		holder.remove_child(child)
 		child.queue_free()
 	for id in open_windows.keys():
-		if id in ["properties", "task_manager", "mail_read", "compose", "warning"]:
+		if id in ["properties", "mail_read", "compose", "warning"]:
 			continue
 		var window: Control = open_windows[id] as Control
 		var minimized: bool = not window.visible
@@ -690,7 +694,8 @@ func refresh_task_buttons() -> void:
 		b.icon = icon_texture(app_icon_name(id))
 		b.expand_icon = true
 		b.add_theme_constant_override("icon_max_width", 22)
-		b.custom_minimum_size = Vector2(110, 0)
+		b.custom_minimum_size = Vector2(76, 0)
+		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		b.clip_text = true
 		b.tooltip_text = t("Restore window", "还原窗口") if minimized else t("Bring to front", "置于前台")
@@ -715,6 +720,10 @@ func refresh_task_buttons() -> void:
 		b.pressed.connect(restore_window.bind(id))
 		holder.add_child(b)
 
+func refresh_task_manager_if_open() -> void:
+	if open_windows.has("task_manager") and is_instance_valid(open_windows["task_manager"]):
+		call_deferred("open_task_manager")
+
 func window_glyph(id: String) -> String:
 	var glyphs := {"my_pc":"▣", "email":"✉", "browser":"◎", "agent":"✦", "recycle":"♲", "photo_viewer":"▰", "document_viewer":"▤"}
 	return glyphs.get(id, "▣")
@@ -727,7 +736,8 @@ func window_display_name(id: String) -> String:
 		"email":t("Email", "电子邮件"),
 		"browser":t("Browser", "浏览器"),
 		"agent":t("SillyAgent", "智慧助手"),
-		"recycle":t("Recycle Bin", "回收站")
+		"recycle":t("Recycle Bin", "回收站"),
+		"task_manager":t("Task Manager", "任务管理器")
 	}
 	return names.get(id, id.capitalize())
 
@@ -743,6 +753,7 @@ func start_process(name: String, path: String, killable := true, path_visible :=
 		if APP_PATHS[id] == path:
 			app_id = id
 	processes[next_pid] = {"pid":next_pid, "name":name, "path":path, "killable":killable, "path_visible":path_visible, "cpu":cpu if cpu >= 0 else randf_range(0.5, 6.0), "app_id":app_id, "window_id":window_id}
+	refresh_task_manager_if_open()
 
 func open_my_pc(path: String) -> void:
 	var root := create_window("my_pc", t("File Explorer", "文件资源管理器") + " — " + (t("This PC", "此电脑") if path == "root" else fs_items.get(path, {}).get("name", path)), Vector2(680, 390))
