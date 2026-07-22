@@ -413,9 +413,22 @@ func show_properties(item: Dictionary) -> void:
 	var displayed_type: String = item.get("type", "")
 	if item.get("kind", "") == "folder":
 		displayed_type = t("Folder", "文件夹")
-	root.add_child(dark_label(t("Name: ", "名称：") + item.get("name", ""), 18))
-	root.add_child(dark_label(t("Type: ", "类型：") + displayed_type, 18))
-	root.add_child(dark_label(t("Path: ", "路径：") + item.get("path", ""), 18))
+	var tabs := HBoxContainer.new()
+	tabs.add_child(sidebar_item(t("General", "常规"), true))
+	tabs.add_child(sidebar_item(t("Security", "安全")))
+	root.add_child(tabs)
+	var identity := HBoxContainer.new()
+	var icon_name := file_icon_name(item) if item.get("scope", "") == "file" else app_icon_name(item.get("id", "my_pc"))
+	identity.add_child(app_icon_rect(icon_name, 54))
+	var name_label := dark_label(item.get("name", ""), 17)
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	identity.add_child(name_label)
+	root.add_child(identity)
+	root.add_child(HSeparator.new())
+	root.add_child(dark_label(t("Type of item:  ", "项目类型：  ") + displayed_type, 14))
+	root.add_child(dark_label(t("Location:      ", "位置：      ") + item.get("path", ""), 14))
+	root.add_child(HSeparator.new())
+	root.add_child(dark_label(t("Attributes:    ☑ Archive     ☐ Hidden", "属性：    ☑ 存档     ☐ 隐藏"), 13, UIFactory.color("#555555")))
 
 func app_display_name(id: String) -> String:
 	var names := {"my_pc":t("My PC", "我的电脑"), "email":t("Email", "电子邮件"), "browser":t("Browser", "浏览器"), "agent":t("SillyAgent", "智慧助手"), "recycle":t("Recycle Bin", "回收站")}
@@ -461,6 +474,16 @@ func create_window(id: String, title: String, window_size := Vector2(650, 365), 
 	var pad := Control.new()
 	pad.custom_minimum_size.x = 8
 	titlebar.add_child(pad)
+	var title_icon := TextureRect.new()
+	title_icon.texture = icon_texture(app_icon_name(id))
+	title_icon.custom_minimum_size = Vector2(18, 18)
+	title_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	title_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	title_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	titlebar.add_child(title_icon)
+	var icon_gap := Control.new()
+	icon_gap.custom_minimum_size.x = 6
+	titlebar.add_child(icon_gap)
 	var heading := dark_label(title, 13, UIFactory.color("#1a1a1a"))
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	heading.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -494,6 +517,44 @@ func create_window(id: String, title: String, window_size := Vector2(650, 365), 
 		refresh_task_buttons()
 	raise_window(panel)
 	return root
+
+func make_app_toolbar() -> HBoxContainer:
+	var bar := HBoxContainer.new()
+	bar.custom_minimum_size.y = 34
+	bar.add_theme_constant_override("separation", 4)
+	bar.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#f5f5f5"), UIFactory.color("#d7d7d7"), 1, 6, 3))
+	return bar
+
+func make_sidebar(width := 135.0) -> VBoxContainer:
+	var side := VBoxContainer.new()
+	side.custom_minimum_size.x = width
+	side.add_theme_constant_override("separation", 2)
+	side.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#f3f3f3"), UIFactory.color("#dedede"), 1, 6, 6))
+	return side
+
+func sidebar_item(text: String, selected := false) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.custom_minimum_size.y = 30
+	b.add_theme_font_size_override("font_size", 13)
+	b.add_theme_color_override("font_color", UIFactory.color("#202020"))
+	b.add_theme_color_override("font_hover_color", UIFactory.color("#202020"))
+	var normal_color := UIFactory.color("#dbeaf7") if selected else Color.TRANSPARENT
+	b.add_theme_stylebox_override("normal", UIFactory.flat(normal_color, Color.TRANSPARENT, 0, 8, 3))
+	b.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#e5f1fb"), Color.TRANSPARENT, 0, 8, 3))
+	b.add_theme_stylebox_override("pressed", UIFactory.flat(UIFactory.color("#cce4f7"), Color.TRANSPARENT, 0, 8, 3))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	return b
+
+func app_icon_rect(name: String, size_px := 24) -> TextureRect:
+	var icon := TextureRect.new()
+	icon.texture = icon_texture(name)
+	icon.custom_minimum_size = Vector2(size_px, size_px)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return icon
 
 func caption_button(text: String, tooltip: String, is_close := false) -> Button:
 	var b := Button.new()
@@ -685,6 +746,13 @@ func start_process(name: String, path: String, killable := true, path_visible :=
 
 func open_my_pc(path: String) -> void:
 	var root := create_window("my_pc", t("File Explorer", "文件资源管理器") + " — " + (t("This PC", "此电脑") if path == "root" else fs_items.get(path, {}).get("name", path)), Vector2(680, 390))
+	var ribbon := make_app_toolbar()
+	for tab_name in [t("File", "文件"), t("Computer", "计算机"), t("View", "查看")]:
+		var tab := Button.new()
+		tab.text = tab_name
+		UIFactory.style_win10_button(tab)
+		ribbon.add_child(tab)
+	root.add_child(ribbon)
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 4)
 	root.add_child(nav)
@@ -706,9 +774,26 @@ func open_my_pc(path: String) -> void:
 	address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	UIFactory.style_win10_lineedit(address)
 	nav.add_child(address)
+	var search_box := LineEdit.new()
+	search_box.placeholder_text = t("Search", "搜索")
+	search_box.custom_minimum_size.x = 125
+	UIFactory.style_win10_lineedit(search_box)
+	nav.add_child(search_box)
+	var workspace := HBoxContainer.new()
+	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_theme_constant_override("separation", 8)
+	root.add_child(workspace)
+	var side := make_sidebar(125)
+	side.add_child(sidebar_item("★  " + t("Quick access", "快速访问")))
+	side.add_child(sidebar_item("▣  " + t("Desktop", "桌面")))
+	side.add_child(sidebar_item("▤  " + t("Documents", "文档"), path.begins_with("D:\\Documents")))
+	side.add_child(sidebar_item("▰  " + t("Pictures", "图片"), path.begins_with("D:\\Photos")))
+	side.add_child(sidebar_item("▣  " + t("This PC", "此电脑"), path == "root"))
+	workspace.add_child(side)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(scroll)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	workspace.add_child(scroll)
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -801,27 +886,47 @@ func open_file_item(path: String) -> void:
 
 func open_email() -> void:
 	var root := create_window("email", t("SecMail", "安全邮箱"), Vector2(710, 400))
-	var toolbar := HBoxContainer.new()
+	var toolbar := make_app_toolbar()
 	var compose := Button.new()
-	compose.text = "+ " + t("New mail", "写邮件")
+	compose.text = "✉  " + t("New mail", "写邮件")
 	UIFactory.style_win10_button(compose)
 	compose.pressed.connect(open_compose)
 	toolbar.add_child(compose)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	toolbar.add_child(spacer)
-	toolbar.add_child(dark_label(t("Inbox", "收件箱") + " (%d)" % stage.get("emails", []).size(), 14))
+	var sync := Button.new()
+	sync.text = "↻  " + t("Sync", "同步")
+	UIFactory.style_win10_button(sync)
+	toolbar.add_child(sync)
 	root.add_child(toolbar)
+	var workspace := HBoxContainer.new()
+	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_theme_constant_override("separation", 8)
+	root.add_child(workspace)
+	var side := make_sidebar(145)
+	side.add_child(dark_label(t("FOLDERS", "文件夹"), 11, UIFactory.color("#666666")))
+	side.add_child(sidebar_item("▣  " + t("Inbox", "收件箱") + "  %d" % stage.get("emails", []).size(), true))
+	side.add_child(sidebar_item("☆  " + t("Drafts", "草稿")))
+	side.add_child(sidebar_item("➤  " + t("Sent", "已发送")))
+	side.add_child(sidebar_item("♲  " + t("Deleted", "已删除")))
+	workspace.add_child(side)
+	var inbox := VBoxContainer.new()
+	inbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	inbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	inbox.add_child(dark_label(t("Focused inbox", "重点收件箱"), 16, UIFactory.color("#202020")))
+	workspace.add_child(inbox)
 	var emails: Array = stage.get("emails", [])
 	if emails.is_empty():
-		var empty := dark_label(t("Your inbox is empty.", "收件箱为空。"), 20, UIFactory.color("#64748b"))
+		var empty := dark_label(t("You're all caught up\nThere is no mail to show.", "所有邮件都已处理\n没有可显示的邮件。"), 18, UIFactory.color("#64748b"))
 		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		root.add_child(empty)
+		inbox.add_child(empty)
 		return
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(scroll)
+	inbox.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list.add_theme_constant_override("separation", 4)
@@ -898,6 +1003,16 @@ func open_compose() -> void:
 
 func open_browser(initial: String) -> void:
 	var root := create_window("browser", t("SuperBrowser", "超级浏览器"), Vector2(710, 400))
+	var tabs := HBoxContainer.new()
+	tabs.custom_minimum_size.y = 30
+	tabs.add_theme_constant_override("separation", 2)
+	var active_tab := sidebar_item("◎  " + t("New tab", "新标签页"), true)
+	active_tab.custom_minimum_size.x = 180
+	tabs.add_child(active_tab)
+	var new_tab := sidebar_item("+")
+	new_tab.custom_minimum_size.x = 34
+	tabs.add_child(new_tab)
+	root.add_child(tabs)
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 4)
 	var refresh := Button.new()
@@ -923,16 +1038,26 @@ func open_browser(initial: String) -> void:
 	bookmarks.add_theme_constant_override("separation", 4)
 	for bookmark in [["security.local", t("Security Center", "安全中心")], ["news.local", t("Daily News", "每日新闻")], ["learn.local", t("Learning Portal", "学习中心")]]:
 		var b := Button.new()
-		b.text = "★ " + bookmark[1]
-		UIFactory.style_win10_button(b)
+		b.text = "★  " + bookmark[1]
+		b.add_theme_font_size_override("font_size", 12)
+		b.add_theme_color_override("font_color", UIFactory.color("#333333"))
+		b.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		b.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#e5e5e5"), Color.TRANSPARENT, 0, 5, 2))
+		b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 		b.pressed.connect(navigate_browser.bind(bookmark[0]))
 		bookmarks.add_child(b)
 	root.add_child(bookmarks)
-	var page := dark_label(t("Welcome to SuperBrowser\n\nUse a bookmark, enter a local domain, or search with SuperSearch.", "欢迎使用超级浏览器\n\n请选择书签、输入本地域名，或使用超级搜索。"), 15)
+	var page_panel := PanelContainer.new()
+	page_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page_panel.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#d6d6d6"), 1, 20, 18))
+	root.add_child(page_panel)
+	var page := dark_label(t("SuperBrowser\n\nWelcome to your new tab\nUse a bookmark, enter a local domain, or search with SuperSearch.", "超级浏览器\n\n欢迎打开新标签页\n请选择书签、输入本地域名，或使用超级搜索。"), 15)
 	page.name = "WebPage"
 	page.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(page)
+	page.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	page.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	page_panel.add_child(page)
 	if not initial.is_empty():
 		navigate_browser(initial)
 
@@ -956,15 +1081,40 @@ func navigate_browser(value: String) -> void:
 
 func open_agent() -> void:
 	var root := create_window("agent", t("SillyAgent", "智慧助手"), Vector2(650, 390))
-	var header := dark_label("✦  " + t("SillyAgent — Your AI assistant", "智慧助手 — 你的 AI 助手"), 16)
-	root.add_child(header)
+	var workspace := HBoxContainer.new()
+	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_theme_constant_override("separation", 8)
+	root.add_child(workspace)
+	var side := make_sidebar(155)
+	var new_chat := sidebar_item("＋  " + t("New chat", "新对话"), true)
+	side.add_child(new_chat)
+	side.add_child(dark_label(t("RECENT", "最近"), 11, UIFactory.color("#666666")))
+	side.add_child(sidebar_item(t("Security questions", "安全问题")))
+	side.add_child(sidebar_item(t("Getting started", "开始使用")))
+	var side_spacer := Control.new()
+	side_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side.add_child(side_spacer)
+	side.add_child(sidebar_item("⚙  " + t("Settings", "设置")))
+	workspace.add_child(side)
+	var conversation := VBoxContainer.new()
+	conversation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	conversation.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	conversation.add_theme_constant_override("separation", 8)
+	workspace.add_child(conversation)
+	var header := HBoxContainer.new()
+	header.add_child(app_icon_rect("silly_agent", 30))
+	var agent_title := dark_label(t("SillyAgent", "智慧助手"), 17)
+	agent_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(agent_title)
+	header.add_child(dark_label(t("Ready", "就绪"), 12, UIFactory.color("#16833b")))
+	conversation.add_child(header)
 	var chat := PanelContainer.new()
 	chat.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	chat.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#f3f6fb"), UIFactory.color("#d0d7e5"), 1, 8, 8))
-	var welcome := dark_label(t("Hello! How can I help you today?\n\n(This assistant will become interactive in a later stage.)", "你好！今天有什么可以帮你？\n\n（助手功能将在后续阶段实现。）"), 14)
+	chat.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#f7f7f8"), UIFactory.color("#d0d7e5"), 1, 18, 16))
+	var welcome := dark_label(t("Hello! I'm SillyAgent.\n\nHow can I help you today?\n\n(This assistant will become interactive in a later stage.)", "你好！我是智慧助手。\n\n今天有什么可以帮你？\n\n（助手功能将在后续阶段实现。）"), 14)
 	welcome.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	chat.add_child(welcome)
-	root.add_child(chat)
+	conversation.add_child(chat)
 	var input_row := HBoxContainer.new()
 	input_row.add_theme_constant_override("separation", 4)
 	var input := LineEdit.new()
@@ -976,26 +1126,52 @@ func open_agent() -> void:
 	send.text = "➤"
 	UIFactory.style_win10_button(send)
 	input_row.add_child(send)
-	root.add_child(input_row)
+	conversation.add_child(input_row)
 
 func open_recycle_bin() -> void:
 	var root := create_window("recycle", t("Recycle Bin", "回收站"), Vector2(600, 350))
-	if deleted_items.is_empty():
-		var empty := dark_label(t("Recycle Bin is empty.", "回收站为空。"), 20, UIFactory.color("#64748b"))
-		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		root.add_child(empty)
-		return
-	var toolbar := HBoxContainer.new()
-	var summary := dark_label(t("Deleted items: ", "已删除项目：") + str(deleted_items.size()), 15)
-	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	toolbar.add_child(summary)
+	var toolbar := make_app_toolbar()
 	var empty_button := Button.new()
-	empty_button.text = t("Empty Recycle Bin", "清空回收站")
+	empty_button.text = "♲  " + t("Empty Recycle Bin", "清空回收站")
 	UIFactory.style_win10_button(empty_button)
+	empty_button.disabled = deleted_items.is_empty()
 	empty_button.pressed.connect(confirm_empty_recycle_bin)
 	toolbar.add_child(empty_button)
+	var toolbar_space := Control.new()
+	toolbar_space.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	toolbar.add_child(toolbar_space)
+	toolbar.add_child(dark_label(t("Manage", "管理"), 12, UIFactory.color("#666666")))
 	root.add_child(toolbar)
+	var address := LineEdit.new()
+	address.text = t("This PC  ›  Recycle Bin", "此电脑  ›  回收站")
+	address.editable = false
+	UIFactory.style_win10_lineedit(address)
+	root.add_child(address)
+	if deleted_items.is_empty():
+		var empty_state := CenterContainer.new()
+		empty_state.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		var empty_box := VBoxContainer.new()
+		empty_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		var bin_icon := app_icon_rect("recycle_bin", 72)
+		empty_box.add_child(bin_icon)
+		var empty := dark_label(t("This folder is empty.", "此文件夹为空。"), 16, UIFactory.color("#666666"))
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty_box.add_child(empty)
+		empty_state.add_child(empty_box)
+		root.add_child(empty_state)
+		return
+	var columns := HBoxContainer.new()
+	columns.custom_minimum_size.y = 25
+	var name_header := dark_label(t("Name", "名称"), 12, UIFactory.color("#555555"))
+	name_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	columns.add_child(name_header)
+	var location_header := dark_label(t("Original location", "原始位置"), 12, UIFactory.color("#555555"))
+	location_header.custom_minimum_size.x = 180
+	columns.add_child(location_header)
+	var actions_header := dark_label(t("Actions", "操作"), 12, UIFactory.color("#555555"))
+	actions_header.custom_minimum_size.x = 190
+	columns.add_child(actions_header)
+	root.add_child(columns)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(scroll)
@@ -1006,9 +1182,15 @@ func open_recycle_bin() -> void:
 	for index in deleted_items.size():
 		var item: Dictionary = deleted_items[index]
 		var row := HBoxContainer.new()
-		var details := dark_label("♲  " + item.get("name", "") + "\n" + item.get("path", ""), 14)
+		row.custom_minimum_size.y = 42
+		row.add_child(app_icon_rect(file_icon_name(item) if item.get("scope", "") == "file" else app_icon_name(item.get("id", "recycle")), 30))
+		var details := dark_label(item.get("name", ""), 13)
 		details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(details)
+		var original_path := dark_label(item.get("path", ""), 12, UIFactory.color("#666666"))
+		original_path.custom_minimum_size.x = 180
+		original_path.clip_text = true
+		row.add_child(original_path)
 		var restore := Button.new()
 		restore.text = t("Restore", "还原")
 		UIFactory.style_win10_button(restore)
@@ -1020,6 +1202,8 @@ func open_recycle_bin() -> void:
 		remove.pressed.connect(confirm_permanent_delete.bind(index))
 		row.add_child(remove)
 		list.add_child(row)
+	var status := dark_label(t("%d item(s)", "%d 个项目") % deleted_items.size(), 12, UIFactory.color("#666666"))
+	root.add_child(status)
 
 func restore_recycle_item(index: int) -> void:
 	if index < 0 or index >= deleted_items.size():
@@ -1095,12 +1279,36 @@ func open_task_manager() -> void:
 		var scale := 35.0 / total
 		for process in processes.values():
 			process.cpu *= scale
-		total = 35.0
+			total = 35.0
+	var menu := HBoxContainer.new()
+	for menu_name in [t("File", "文件"), t("Options", "选项"), t("View", "查看")]:
+		var menu_button := sidebar_item(menu_name)
+		menu_button.custom_minimum_size.x = 70
+		menu.add_child(menu_button)
+	root.add_child(menu)
+	var tabs := HBoxContainer.new()
+	for tab_name in [t("Processes", "进程"), t("Performance", "性能"), t("App history", "应用历史"), t("Startup", "启动")]:
+		var tab := sidebar_item(tab_name, tab_name == t("Processes", "进程"))
+		tab.custom_minimum_size.x = 105
+		tabs.add_child(tab)
+	root.add_child(tabs)
+	var utilization := HBoxContainer.new()
+	var utilization_title := dark_label(t("Processes", "进程"), 16)
+	utilization_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	utilization.add_child(utilization_title)
+	utilization.add_child(dark_label(t("CPU usage  ", "CPU 使用率  ") + "%.1f%%" % total, 14, UIFactory.color("#0078d7")))
+	root.add_child(utilization)
 	var header := HBoxContainer.new()
 	var name_header := dark_label(t("Processes", "进程"), 14, UIFactory.color("#5a5a5a"))
 	name_header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(name_header)
-	header.add_child(dark_label("CPU", 14, UIFactory.color("#5a5a5a")))
+	var cpu_header := dark_label("CPU", 14, UIFactory.color("#5a5a5a"))
+	cpu_header.custom_minimum_size.x = 70
+	cpu_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_child(cpu_header)
+	var action_header := dark_label(t("Actions", "操作"), 14, UIFactory.color("#5a5a5a"))
+	action_header.custom_minimum_size.x = 180
+	header.add_child(action_header)
 	root.add_child(header)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1116,7 +1324,14 @@ func open_task_manager() -> void:
 		var label := dark_label("%s  (PID %d)" % [process.name, pid], 13)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(label)
-		row.add_child(dark_label("%.1f%%" % process.cpu, 13))
+		var cpu := ProgressBar.new()
+		cpu.min_value = 0
+		cpu.max_value = 40
+		cpu.value = process.cpu
+		cpu.show_percentage = false
+		cpu.custom_minimum_size = Vector2(70, 18)
+		cpu.tooltip_text = "%.1f%% CPU" % process.cpu
+		row.add_child(cpu)
 		var path := Button.new()
 		path.text = t("Path", "路径")
 		UIFactory.style_win10_button(path)
