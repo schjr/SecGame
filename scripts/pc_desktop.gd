@@ -32,15 +32,13 @@ var context_menu: PopupMenu
 var start_menu: PopupPanel
 var current_context: Dictionary
 var open_windows: Dictionary = {}
-var processes: Dictionary = {}
+var process_manager := ProcessManager.new()
+var processes: Dictionary = process_manager.processes
 var deleted_items: Array[Dictionary] = []
 var deleted_mail: Dictionary = {}
 var app_buttons: Dictionary = {}
 var reported: Dictionary = {}
-var next_pid := 2400
 var clock_label: Label
-var dragged_window: Control
-var drag_offset := Vector2.ZERO
 var antivirus_present := false
 var firewall_enabled := true
 var virus_protection_enabled := true
@@ -51,33 +49,16 @@ var malware_restart_timer: Timer
 var installer_desktop_button: Button
 var process_context_menu: PopupMenu
 var context_process_pid := -1
-
-var fs_items: Dictionary = {
-	"C:\\": {"name":"Local Disk (C:)", "type":"Disk", "kind":"disk", "path":"C:\\", "deletable":true, "children":["C:\\System", "C:\\Profiles"]},
-	"C:\\System": {"name":"System", "type":"Folder", "kind":"folder", "path":"C:\\System", "deletable":true, "children":["C:\\System\\kernel32.sys", "C:\\System\\svchost.exe", "C:\\System\\netservice.dll", "C:\\System\\securityd.exe"]},
-	"C:\\System\\kernel32.sys": {"name":"kernel32.sys", "type":"System file", "kind":"file", "path":"C:\\System\\kernel32.sys", "deletable":true},
-	"C:\\System\\svchost.exe": {"name":"svchost.exe", "type":"Executable", "kind":"executable", "path":"C:\\System\\svchost.exe", "deletable":true},
-	"C:\\System\\netservice.dll": {"name":"netservice.dll", "type":"Program library", "kind":"program", "path":"C:\\System\\netservice.dll", "deletable":true},
-	"C:\\System\\securityd.exe": {"name":"securityd.exe", "type":"Executable", "kind":"executable", "path":"C:\\System\\securityd.exe", "deletable":true},
-	"C:\\Profiles": {"name":"Profiles", "type":"Folder", "kind":"folder", "path":"C:\\Profiles", "deletable":true, "children":["C:\\Profiles\\User"]},
-	"C:\\Profiles\\User": {"name":"User", "type":"Folder", "kind":"folder", "path":"C:\\Profiles\\User", "deletable":true, "children":["C:\\Profiles\\User\\user.dat", "C:\\Profiles\\User\\settings.ini", "C:\\Profiles\\User\\login_helper.exe"]},
-	"C:\\Profiles\\User\\user.dat": {"name":"user.dat", "type":"Profile data", "kind":"file", "path":"C:\\Profiles\\User\\user.dat", "deletable":true},
-	"C:\\Profiles\\User\\settings.ini": {"name":"settings.ini", "type":"Text configuration", "kind":"text", "path":"C:\\Profiles\\User\\settings.ini", "deletable":true},
-	"C:\\Profiles\\User\\login_helper.exe": {"name":"login_helper.exe", "type":"Executable", "kind":"executable", "path":"C:\\Profiles\\User\\login_helper.exe", "deletable":true},
-	"D:\\": {"name":"Data Disk (D:)", "type":"Disk", "kind":"disk", "path":"D:\\", "deletable":true, "children":["D:\\Photos", "D:\\Documents"]},
-	"D:\\Photos": {"name":"Photos", "type":"Folder", "kind":"folder", "path":"D:\\Photos", "deletable":true, "children":["D:\\Photos\\beach.jpg", "D:\\Photos\\family.png", "D:\\Photos\\cat.jpg"]},
-	"D:\\Photos\\beach.jpg": {"name":"beach.jpg", "type":"JPEG photo", "kind":"photo", "path":"D:\\Photos\\beach.jpg", "deletable":true},
-	"D:\\Photos\\family.png": {"name":"family.png", "type":"PNG photo", "kind":"photo", "path":"D:\\Photos\\family.png", "deletable":true},
-	"D:\\Photos\\cat.jpg": {"name":"cat.jpg", "type":"JPEG photo", "kind":"photo", "path":"D:\\Photos\\cat.jpg", "deletable":true},
-	"D:\\Documents": {"name":"Documents", "type":"Folder", "kind":"folder", "path":"D:\\Documents", "deletable":true, "children":["D:\\Documents\\project_notes.txt", "D:\\Documents\\budget.pdf", "D:\\Documents\\meeting.docx"]},
-	"D:\\Documents\\project_notes.txt": {"name":"project_notes.txt", "type":"Text document", "kind":"text", "path":"D:\\Documents\\project_notes.txt", "deletable":true},
-	"D:\\Documents\\budget.pdf": {"name":"budget.pdf", "type":"PDF document", "kind":"document", "path":"D:\\Documents\\budget.pdf", "deletable":true},
-	"D:\\Documents\\meeting.docx": {"name":"meeting.docx", "type":"Word document", "kind":"document", "path":"D:\\Documents\\meeting.docx", "deletable":true}
-}
+var virtual_fs := VirtualFileSystem.new()
+var fs_items: Dictionary = virtual_fs.items
+var browser_pages: BrowserPages
+var window_manager: DesktopWindowManager
 
 func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	state = game_state
 	stage = stage_data
+	browser_pages = BrowserPages.new(self)
+	window_manager = DesktopWindowManager.new(self)
 	antivirus_present = stage.get("antivirus_present", false)
 	antivirus_installer_present = stage.get("antivirus_installer_present", false)
 	antivirus_installer_path = stage.get("antivirus_installer_path", "C:\\Profiles\\User\\Desktop\\SuperSecuritySetup.exe")
@@ -91,17 +72,7 @@ func t(en: String, zh: String) -> String:
 	return state.tr_text(en, zh)
 
 func ensure_virtual_folder(parent_path: String, folder_path: String, folder_name: String) -> void:
-	if not fs_items.has(folder_path):
-		fs_items[folder_path] = {
-			"name": folder_name,
-			"type": "Folder",
-			"kind": "folder",
-			"path": folder_path,
-			"deletable": true,
-			"children": []
-		}
-	if fs_items.has(parent_path) and folder_path not in fs_items[parent_path]["children"]:
-		fs_items[parent_path]["children"].append(folder_path)
+	virtual_fs.ensure_folder(parent_path, folder_path, folder_name)
 
 func configure_malware_stage() -> void:
 	if stage.id != "malware":
@@ -565,9 +536,6 @@ func remove_from_filesystem(path: String) -> void:
 		path == MALWARE_PATH or MALWARE_PATH.begins_with(path.trim_suffix("\\") + "\\")
 	)
 	remove_virtual_item_recursive(path)
-	for item in fs_items.values():
-		if item.has("children"):
-			item.children.erase(path)
 	if (
 		(path == antivirus_installer_path or antivirus_installer_path.begins_with(path.trim_suffix("\\") + "\\"))
 		and is_instance_valid(installer_desktop_button)
@@ -581,42 +549,17 @@ func remove_from_filesystem(path: String) -> void:
 		stage_completed.emit()
 
 func remove_virtual_item_recursive(path: String) -> void:
-	if not fs_items.has(path):
-		return
-	var children: Array = fs_items[path].get("children", []).duplicate()
-	for child_path in children:
-		remove_virtual_item_recursive(child_path)
-	fs_items.erase(path)
+	virtual_fs.remove_recursive(path)
 
 func collect_virtual_subtree(path: String) -> Dictionary:
-	var snapshot: Dictionary = {}
-	if not fs_items.has(path):
-		return snapshot
-	snapshot[path] = fs_items[path].duplicate(true)
-	for child_path in fs_items[path].get("children", []):
-		snapshot.merge(collect_virtual_subtree(child_path), true)
-	return snapshot
+	return virtual_fs.collect_subtree(path)
 
 func find_non_deletable_item(path: String) -> String:
-	if not fs_items.has(path):
-		return ""
-	if not fs_items[path].get("deletable", false):
-		return path
-	for child_path in fs_items[path].get("children", []):
-		var protected_path := find_non_deletable_item(child_path)
-		if not protected_path.is_empty():
-			return protected_path
-	return ""
+	return virtual_fs.find_non_deletable(path)
 
 func path_has_running_process(path: String) -> bool:
-	var folder_prefix := path.trim_suffix("\\") + "\\"
 	var is_folder: bool = fs_items.has(path) and fs_items[path].get("kind", "") == "folder"
-	for process in processes.values():
-		if process.path == path:
-			return true
-		if is_folder and String(process.path).begins_with(folder_prefix):
-			return true
-	return false
+	return process_manager.has_path(path, is_folder)
 
 func is_essential_system_path(path: String) -> bool:
 	return path == "C:\\System" or path.begins_with("C:\\System\\")
@@ -653,17 +596,12 @@ func crash_system() -> void:
 func remove_malware_process() -> void:
 	if is_instance_valid(malware_restart_timer):
 		malware_restart_timer.stop()
-	for pid in processes.keys():
-		if processes[pid].path == MALWARE_PATH:
-			processes.erase(pid)
+	process_manager.remove_for_path(MALWARE_PATH)
 	refresh_task_manager_if_open()
 
 func find_parent_path(path: String) -> String:
-	for candidate_path in fs_items:
-		var candidate: Dictionary = fs_items[candidate_path]
-		if candidate.has("children") and path in candidate.children:
-			return candidate_path
-	return "root"
+	var parent_path := virtual_fs.find_parent(path)
+	return parent_path if not parent_path.is_empty() else "root"
 
 func show_properties(item: Dictionary) -> void:
 	var root := create_window("properties", t("Properties", "属性") + " — " + item.get("name", ""), Vector2(430, 270), false)
@@ -834,149 +772,37 @@ func caption_button(text: String, tooltip: String, is_close := false) -> Button:
 	return b
 
 func on_titlebar_input(event: InputEvent, id: String, panel: Control) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed:
-			raise_window(panel)
-			if event.double_click:
-				toggle_maximize(id)
-				return
-			if panel.get_meta("maximized", false):
-				return
-			dragged_window = panel
-			drag_offset = event.global_position - panel.global_position
-		else:
-			dragged_window = null
-	elif event is InputEventMouseMotion and dragged_window == panel:
-		var desired_global: Vector2 = event.global_position - drag_offset
-		panel.global_position = desired_global
-		clamp_window_to_desktop(panel)
+	window_manager.on_titlebar_input(event, id, panel)
 
 func on_window_panel_input(event: InputEvent, id: String) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		if open_windows.has(id) and is_instance_valid(open_windows[id]):
-			raise_window(open_windows[id])
+	window_manager.on_panel_input(event, id)
 
 func toggle_maximize(id: String) -> void:
-	if not open_windows.has(id) or not is_instance_valid(open_windows[id]):
-		return
-	var panel: Control = open_windows[id]
-	if panel.get_meta("maximized", false):
-		var rect: Rect2 = panel.get_meta("restore_rect")
-		panel.position = rect.position
-		panel.size = rect.size
-		panel.set_meta("maximized", false)
-		clamp_window_to_desktop(panel)
-	else:
-		panel.set_meta("restore_rect", Rect2(panel.position, panel.size))
-		panel.position = Vector2.ZERO
-		panel.size = Vector2(window_layer.size.x, maxf(0.0, window_layer.size.y - TASKBAR_H))
-		panel.set_meta("maximized", true)
-	raise_window(panel)
+	window_manager.toggle_maximize(id)
 
 func raise_window(panel: Control) -> void:
-	window_layer.move_child(panel, window_layer.get_child_count() - 1)
-	refresh_window_borders()
+	window_manager.raise_window(panel)
 
 func refresh_window_borders() -> void:
-	var top: Control = null
-	for i in range(window_layer.get_child_count() - 1, -1, -1):
-		var child := window_layer.get_child(i)
-		if child.visible:
-			top = child
-			break
-	for id in open_windows:
-		var window: Control = open_windows[id]
-		if not is_instance_valid(window):
-			continue
-		var style: StyleBoxFlat = window.get_theme_stylebox("panel").duplicate()
-		style.border_color = UIFactory.accent() if window == top else UIFactory.color("#9a9a9a")
-		window.add_theme_stylebox_override("panel", style)
+	window_manager.refresh_borders()
 
 func clamp_window_to_desktop(panel: Control) -> void:
-	# The complete window must remain inside the monitor, excluding the
-	# taskbar. This constrains every edge, not only the title bar.
-	var usable_size := Vector2(window_layer.size.x, maxf(0.0, window_layer.size.y - TASKBAR_H))
-	var max_x: float = maxf(0.0, usable_size.x - panel.size.x)
-	var max_y: float = maxf(0.0, usable_size.y - panel.size.y)
-	panel.position = Vector2(
-		clampf(panel.position.x, 0.0, max_x),
-		clampf(panel.position.y, 0.0, max_y)
-	)
+	window_manager.clamp_to_desktop(panel)
 
 func minimize_window(id: String) -> void:
-	if open_windows.has(id) and is_instance_valid(open_windows[id]):
-		open_windows[id].hide()
-	refresh_window_borders()
-	refresh_task_buttons()
+	window_manager.minimize(id)
 
 func minimize_all_windows() -> void:
-	for id in open_windows:
-		if is_instance_valid(open_windows[id]):
-			open_windows[id].hide()
-	refresh_window_borders()
-	refresh_task_buttons()
+	window_manager.minimize_all()
 
 func restore_window(id: String) -> void:
-	if not open_windows.has(id) or not is_instance_valid(open_windows[id]):
-		return
-	var panel: Control = open_windows[id]
-	panel.show()
-	raise_window(panel)
-	refresh_task_buttons()
+	window_manager.restore(id)
 
 func close_window(id: String) -> void:
-	if open_windows.has(id) and is_instance_valid(open_windows[id]):
-		open_windows[id].queue_free()
-	open_windows.erase(id)
-	for pid in processes.keys():
-		if processes[pid].window_id == id:
-			processes.erase(pid)
-	refresh_window_borders()
-	refresh_task_buttons()
-	refresh_task_manager_if_open()
+	window_manager.close(id)
 
 func refresh_task_buttons() -> void:
-	var holder := taskbar.find_child("RunningApps", true, false)
-	if holder == null:
-		return
-	for child in holder.get_children():
-		holder.remove_child(child)
-		child.queue_free()
-	for id in open_windows.keys():
-		if id in ["properties", "mail_read", "compose", "warning"]:
-			continue
-		var window: Control = open_windows[id] as Control
-		var minimized: bool = not window.visible
-		var b := Button.new()
-		b.text = window_display_name(id)
-		b.icon = icon_texture(app_icon_name(id))
-		b.expand_icon = true
-		b.add_theme_constant_override("icon_max_width", 22)
-		b.custom_minimum_size = Vector2(76, 0)
-		b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		b.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		b.clip_text = true
-		b.tooltip_text = t("Restore window", "还原窗口") if minimized else t("Bring to front", "置于前台")
-		b.add_theme_font_size_override("font_size", 12)
-		var font_color := Color(1, 1, 1, 0.55) if minimized else Color.WHITE
-		b.add_theme_color_override("font_color", font_color)
-		b.add_theme_color_override("font_hover_color", font_color)
-		var underline := Color.TRANSPARENT if minimized else UIFactory.accent()
-		var normal := UIFactory.flat(Color.TRANSPARENT)
-		normal.border_color = underline
-		normal.border_width_bottom = 2
-		var hover := UIFactory.flat(Color(1, 1, 1, 0.1))
-		hover.border_color = underline
-		hover.border_width_bottom = 2
-		var pressed := UIFactory.flat(Color(1, 1, 1, 0.18))
-		pressed.border_color = underline
-		pressed.border_width_bottom = 2
-		b.add_theme_stylebox_override("normal", normal)
-		b.add_theme_stylebox_override("hover", hover)
-		b.add_theme_stylebox_override("pressed", pressed)
-		b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		b.pressed.connect(restore_window.bind(id))
-		holder.add_child(b)
+	window_manager.refresh_task_buttons()
 
 func refresh_task_manager_if_open() -> void:
 	if open_windows.has("task_manager") and is_instance_valid(open_windows["task_manager"]):
@@ -1001,17 +827,7 @@ func window_display_name(id: String) -> String:
 	return names.get(id, id.capitalize())
 
 func start_process(name: String, path: String, killable := true, path_visible := true, cpu := -1.0, window_id := "") -> void:
-	for process in processes.values():
-		if not window_id.is_empty() and process.window_id == window_id:
-			return
-		if window_id.is_empty() and process.name == name:
-			return
-	next_pid += randi_range(7, 31)
-	var app_id := ""
-	for id in APP_PATHS:
-		if APP_PATHS[id] == path:
-			app_id = id
-	processes[next_pid] = {"pid":next_pid, "name":name, "path":path, "killable":killable, "path_visible":path_visible, "cpu":cpu if cpu >= 0 else randf_range(0.5, 6.0), "app_id":app_id, "window_id":window_id}
+	process_manager.start(name, path, APP_PATHS, killable, path_visible, cpu, window_id)
 	refresh_task_manager_if_open()
 
 func open_my_pc(path: String) -> void:
@@ -1366,7 +1182,7 @@ func open_browser(initial: String) -> void:
 	if not initial.is_empty():
 		navigate_browser(initial)
 	else:
-		render_new_tab(web_content)
+		browser_pages.render_new_tab(web_content)
 
 func navigate_browser(value: String) -> void:
 	if not open_windows.has("browser"):
@@ -1377,22 +1193,22 @@ func navigate_browser(value: String) -> void:
 	var normalized := normalize_game_address(value)
 	if normalized == "www.supersecure.test":
 		address.text = SUPER_SECURE_ADDRESS
-		render_super_secure_site(web_content)
+		browser_pages.render_super_secure(web_content)
 	elif normalized == "news.supersearch.test":
 		address.text = DAILY_NEWS_ADDRESS
-		render_news_site(web_content)
+		browser_pages.render_news(web_content)
 	elif normalized == "learn.supersearch.test":
 		address.text = LEARNING_ADDRESS
-		render_learning_site(web_content)
+		browser_pages.render_learning(web_content)
 	elif normalized == "www.supersearch.test":
 		address.text = SUPER_SEARCH_ADDRESS
-		render_search_home(web_content)
+		browser_pages.render_search_home(web_content)
 	elif "." not in normalized:
 		address.text = SUPER_SEARCH_ADDRESS + "/search?q=" + value.strip_edges().replace(" ", "+")
-		render_search_results(web_content, value.strip_edges())
+		browser_pages.render_search_results(web_content, value.strip_edges())
 	else:
 		address.text = value
-		render_unavailable_site(web_content, value)
+		browser_pages.render_unavailable(web_content, value)
 
 func normalize_game_address(value: String) -> String:
 	var normalized := value.strip_edges().to_lower()
@@ -1401,147 +1217,6 @@ func normalize_game_address(value: String) -> String:
 			normalized = normalized.trim_prefix(prefix)
 	normalized = normalized.trim_suffix("/")
 	return normalized
-
-func clear_web_content(content: VBoxContainer) -> void:
-	for child in content.get_children():
-		content.remove_child(child)
-		child.queue_free()
-
-func add_website_header(content: VBoxContainer, brand: String, links: Array[String]) -> void:
-	var header := HBoxContainer.new()
-	header.custom_minimum_size.y = 32
-	var brand_label := dark_label(brand, 16, UIFactory.color("#172033"))
-	brand_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(brand_label)
-	for link in links:
-		var link_button := Button.new()
-		link_button.text = link
-		link_button.add_theme_font_size_override("font_size", 12)
-		link_button.add_theme_color_override("font_color", UIFactory.color("#334155"))
-		link_button.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-		link_button.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#e5f1fb"), Color.TRANSPARENT, 0, 5, 2))
-		link_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		header.add_child(link_button)
-	content.add_child(header)
-	content.add_child(HSeparator.new())
-
-func render_new_tab(content: VBoxContainer) -> void:
-	clear_web_content(content)
-	var center := CenterContainer.new()
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var copy := VBoxContainer.new()
-	var title := dark_label("SuperBrowser", 23, UIFactory.color("#0078d7"))
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	copy.add_child(title)
-	var hint := dark_label(t("Search the web or enter an address", "搜索网页或输入网址"), 14, UIFactory.color("#64748b"))
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	copy.add_child(hint)
-	center.add_child(copy)
-	content.add_child(center)
-
-func render_super_secure_site(content: VBoxContainer) -> void:
-	clear_web_content(content)
-	add_website_header(content, "◆  Super Secure", [t("Products", "产品"), t("Support", "支持"), t("About", "关于")])
-	var hero := PanelContainer.new()
-	hero.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	hero.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#e8f3fb"), UIFactory.color("#b7d7ee"), 1, 18, 14))
-	var hero_row := HBoxContainer.new()
-	hero_row.add_theme_constant_override("separation", 16)
-	hero.add_child(hero_row)
-	hero_row.add_child(app_icon_rect("antivirus_good", 62))
-	var copy := VBoxContainer.new()
-	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	copy.add_child(dark_label("Super Security", 22, UIFactory.color("#0b3a60")))
-	var slogan := dark_label(t(
-		"Simple, dependable protection for your digital life.",
-		"为你的数字生活提供简单、可靠的保护。"
-	), 14, UIFactory.color("#334155"))
-	slogan.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	copy.add_child(slogan)
-	var download := Button.new()
-	download.name = "VendorDownload"
-	download.text = t("Download for this PC", "下载到此电脑")
-	download.custom_minimum_size.x = 205
-	UIFactory.style_win10_button(download)
-	download.pressed.connect(download_antivirus_installer)
-	copy.add_child(download)
-	hero_row.add_child(copy)
-	content.add_child(hero)
-	var features := HBoxContainer.new()
-	features.add_theme_constant_override("separation", 8)
-	for feature in [
-		t("✓ Malware scanning", "✓ 恶意软件扫描"),
-		t("✓ Virus protection", "✓ 病毒防护"),
-		t("✓ Network firewall", "✓ 网络防火墙")
-	]:
-		var card := PanelContainer.new()
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		card.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#d6d6d6"), 1, 8, 7))
-		var label := dark_label(feature, 12, UIFactory.color("#334155"))
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		card.add_child(label)
-		features.add_child(card)
-	content.add_child(features)
-	var footer := dark_label(t(
-		"Super Secure Software  •  Privacy  •  Terms",
-		"Super Secure 软件  •  隐私  •  条款"
-	), 10, UIFactory.color("#718096"))
-	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	content.add_child(footer)
-
-func render_news_site(content: VBoxContainer) -> void:
-	clear_web_content(content)
-	add_website_header(content, t("Daily News", "每日新闻"), [t("World", "国际"), t("Technology", "科技"), t("Local", "本地")])
-	content.add_child(dark_label(t("Today's top stories", "今日要闻"), 21, UIFactory.color("#202020")))
-	for headline in [
-		t("Technology teams announce new security initiatives", "科技团队公布新的安全计划"),
-		t("Community organizations expand digital education", "社区组织扩大数字教育活动"),
-		t("Researchers publish the week's science briefing", "研究人员发布本周科学简报")
-	]:
-		var story := PanelContainer.new()
-		story.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#f8fafc"), UIFactory.color("#d6d6d6"), 1, 10, 7))
-		story.add_child(dark_label(headline, 13, UIFactory.color("#202020")))
-		content.add_child(story)
-
-func render_learning_site(content: VBoxContainer) -> void:
-	clear_web_content(content)
-	add_website_header(content, t("Learning Portal", "学习中心"), [t("Courses", "课程"), t("Library", "资料库"), t("Progress", "进度")])
-	content.add_child(dark_label(t("Security learning center", "安全学习中心"), 21, UIFactory.color("#202020")))
-	content.add_child(dark_label(t(
-		"Browse interactive lessons and practical security exercises.",
-		"浏览互动课程和实用安全练习。"
-	), 14, UIFactory.color("#64748b")))
-	for course in [t("Endpoint fundamentals", "终端基础"), t("Safer communication", "安全通信"), t("Network awareness", "网络意识")]:
-		content.add_child(sidebar_item("▤  " + course))
-
-func render_search_home(content: VBoxContainer) -> void:
-	clear_web_content(content)
-	var center := CenterContainer.new()
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var title := dark_label("SuperSearch", 28, UIFactory.color("#0078d7"))
-	center.add_child(title)
-	content.add_child(center)
-
-func render_search_results(content: VBoxContainer, query: String) -> void:
-	clear_web_content(content)
-	add_website_header(content, "SuperSearch", [t("Web", "网页"), t("Images", "图片"), t("News", "新闻")])
-	content.add_child(dark_label(t("Search results for: ", "搜索结果：") + query, 17, UIFactory.color("#202020")))
-	content.add_child(dark_label(t(
-		"No indexed results are available in this training browser.",
-		"训练浏览器中没有可用的索引结果。"
-	), 13, UIFactory.color("#64748b")))
-
-func render_unavailable_site(content: VBoxContainer, address: String) -> void:
-	clear_web_content(content)
-	var center := CenterContainer.new()
-	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var message := dark_label(t(
-		"This simulated website is unavailable.",
-		"此模拟网站不可用。"
-	) + "\n" + address, 16, UIFactory.color("#64748b"))
-	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	center.add_child(message)
-	content.add_child(center)
 
 func download_antivirus_installer() -> void:
 	if antivirus_installer_present and fs_items.has(antivirus_installer_path):
@@ -1737,21 +1412,23 @@ func restore_recycle_item(index: int) -> void:
 	match item.get("scope", ""):
 		"file":
 			if item.has("recursive_items"):
-				var subtree: Dictionary = item.recursive_items
-				for restored_path in subtree:
-					fs_items[restored_path] = subtree[restored_path].duplicate(true)
+				virtual_fs.restore_subtree(
+					item.recursive_items,
+					item.get("parent_path", "root"),
+					item.path
+				)
 			else:
 				var restored: Dictionary = item.duplicate(true)
 				restored.erase("scope")
 				restored.erase("parent_path")
 				restored.erase("recursive_items")
 				fs_items[item.path] = restored
-			var parent_path: String = item.get("parent_path", "root")
-			if parent_path != "root" and fs_items.has(parent_path):
-				var children: Array = fs_items[parent_path].get("children", [])
-				if item.path not in children:
-					children.append(item.path)
-				fs_items[parent_path]["children"] = children
+				var parent_path: String = item.get("parent_path", "root")
+				if parent_path != "root" and fs_items.has(parent_path):
+					var children: Array = fs_items[parent_path].get("children", [])
+					if item.path not in children:
+						children.append(item.path)
+					fs_items[parent_path]["children"] = children
 		"mail":
 			deleted_mail.erase(item.index)
 		"app":
