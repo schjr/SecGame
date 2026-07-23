@@ -3,14 +3,51 @@ extends RefCounted
 
 const SAVE_PATH := "user://settings.cfg"
 const STAGES := [
-	{"id":"malware", "title_en":"Malware Cleanup", "title_zh":"恶意软件清理", "desc_en":"Inspect suspicious files and remove the infected one.", "desc_zh":"检查可疑文件并移除被感染的文件。", "emails":[]},
-	{"id":"spam", "title_en":"Spam Recognition", "title_zh":"垃圾邮件识别", "desc_en":"Review the inbox and report every suspicious message.", "desc_zh":"检查收件箱并举报所有可疑邮件。", "emails":[
+	{
+		"id":"malware",
+		"title_en":"Endpoint Protection I: Malicious Software",
+		"title_zh":"终端防护 I：恶意软件",
+		"desc_en":"Find and remove the malware consuming this computer's resources.",
+		"desc_zh":"找到并移除占用此计算机资源的恶意软件。",
+		"emails":[]
+	},
+	{
+		"id":"antivirus",
+		"title_en":"Endpoint Protection II: Virus Protection",
+		"title_zh":"终端防护 II：病毒防护",
+		"desc_en":"Stage content will be defined later.",
+		"desc_zh":"关卡内容将在之后定义。",
+		"emails":[]
+	},
+	{
+		"id":"spam",
+		"title_en":"Spam Recognition",
+		"title_zh":"垃圾邮件识别",
+		"desc_en":"Stage content will be defined later.",
+		"desc_zh":"关卡内容将在之后定义。",
+		"emails":[
 		{"from":"IT Support <support@company-secure.example>", "subject":"Scheduled password maintenance", "body":"No action is required. The maintenance window begins tonight.", "spam":false},
 		{"from":"Prize Center <winner@free-gifts.example>", "subject":"YOU WON! Claim in 10 minutes", "body":"Click the link and enter your banking details to receive your prize.", "spam":true},
 		{"from":"Alex Chen <alex.chen@company.example>", "subject":"Team meeting notes", "body":"Here are the notes from today's security review. Thanks!", "spam":false},
 		{"from":"Account Team <verify@micros0ft-login.example>", "subject":"Urgent: mailbox will be deleted", "body":"Your mailbox is over quota. Sign in immediately using the attached link.", "spam":true}
-	]},
-	{"id":"passwords", "title_en":"Password Safety", "title_zh":"密码安全", "desc_en":"Learn what makes a password resistant to guessing.", "desc_zh":"了解如何创建难以猜测的密码。", "emails":[]}
+		]
+	},
+	{
+		"id":"network",
+		"title_en":"Network Protection",
+		"title_zh":"网络防护",
+		"desc_en":"Stage content will be defined later.",
+		"desc_zh":"关卡内容将在之后定义。",
+		"emails":[]
+	},
+	{
+		"id":"ai_security",
+		"title_en":"AI Security",
+		"title_zh":"人工智能安全",
+		"desc_en":"Stage content will be defined later.",
+		"desc_zh":"关卡内容将在之后定义。",
+		"emails":[]
+	}
 ]
 
 var language := "en"

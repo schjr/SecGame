@@ -56,6 +56,7 @@ func make_monitor() -> void:
 	monitor.add_child(pc)
 	pc.setup(state, stage)
 	pc.stage_completed.connect(complete_stage)
+	pc.stage_failed.connect(fail_stage)
 	var stand := ColorRect.new()
 	stand.color = UIFactory.color("#1f2937")
 	stand.position = Vector2(390, 630)
@@ -195,6 +196,14 @@ func complete_stage() -> void:
 	var dialog := AcceptDialog.new()
 	dialog.title = state.tr_text("Stage complete", "关卡完成")
 	dialog.dialog_text = state.tr_text("Great work! Your progress has been saved.", "做得好！你的进度已保存。")
+	dialog.confirmed.connect(return_callback)
+	add_child(dialog)
+	dialog.popup_centered()
+
+func fail_stage(message: String) -> void:
+	var dialog := AcceptDialog.new()
+	dialog.title = state.tr_text("Stage failed", "关卡失败")
+	dialog.dialog_text = message
 	dialog.confirmed.connect(return_callback)
 	add_child(dialog)
 	dialog.popup_centered()

@@ -24,10 +24,7 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/window_width_override=1280
 window/size/window_height_override=720
-# Render UI directly at the selected resolution. Unlike viewport scaling,
-# this keeps fonts and vector-drawn controls sharp on Retina displays.
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
 
 [rendering]
 

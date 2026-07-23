@@ -2,16 +2,24 @@ class_name PCDesktop
 extends Control
 
 signal stage_completed
+signal stage_failed(message: String)
 
 const TASKBAR_H := 40.0
 const ICON_DIR := "res://assets/icons/"
+const MALWARE_PATH := "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache\\UpdateService\\host_service.exe"
+const MALWARE_FOLDER := "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache\\UpdateService"
+const SUPER_SECURE_ADDRESS := "https://www.supersecure.test"
+const DAILY_NEWS_ADDRESS := "https://news.supersearch.test"
+const LEARNING_ADDRESS := "https://learn.supersearch.test"
+const SUPER_SEARCH_ADDRESS := "https://www.supersearch.test"
 
 const APP_PATHS := {
 	"my_pc": "C:\\Windows\\explorer.exe",
 	"email": "C:\\Program Files\\SecMail\\SecMail.exe",
 	"browser": "C:\\Program Files\\SuperBrowser\\browser.exe",
 	"agent": "C:\\Program Files\\SillyAgent\\SillyAgent.exe",
-	"recycle": "C:\\$Recycle.Bin"
+	"recycle": "C:\\$Recycle.Bin",
+	"antivirus": "C:\\Program Files\\Super Security\\SuperSecurity.exe"
 }
 
 var state: GameState
@@ -19,6 +27,7 @@ var stage: Dictionary
 var desktop: Control
 var window_layer: Control
 var taskbar: PanelContainer
+var system_tray: HBoxContainer
 var context_menu: PopupMenu
 var start_menu: PopupPanel
 var current_context: Dictionary
@@ -32,6 +41,16 @@ var next_pid := 2400
 var clock_label: Label
 var dragged_window: Control
 var drag_offset := Vector2.ZERO
+var antivirus_present := false
+var firewall_enabled := true
+var virus_protection_enabled := true
+var antivirus_tray_button: Button
+var antivirus_installer_present := false
+var antivirus_installer_path := "C:\\Profiles\\User\\Desktop\\SuperSecuritySetup.exe"
+var malware_restart_timer: Timer
+var installer_desktop_button: Button
+var process_context_menu: PopupMenu
+var context_process_pid := -1
 
 var fs_items: Dictionary = {
 	"C:\\": {"name":"Local Disk (C:)", "type":"Disk", "kind":"disk", "path":"C:\\", "deletable":true, "children":["C:\\System", "C:\\Profiles"]},
@@ -59,10 +78,91 @@ var fs_items: Dictionary = {
 func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	state = game_state
 	stage = stage_data
+	antivirus_present = stage.get("antivirus_present", false)
+	antivirus_installer_present = stage.get("antivirus_installer_present", false)
+	antivirus_installer_path = stage.get("antivirus_installer_path", "C:\\Profiles\\User\\Desktop\\SuperSecuritySetup.exe")
+	firewall_enabled = stage.get("firewall_enabled", true)
+	virus_protection_enabled = stage.get("virus_protection_enabled", true)
+	configure_malware_stage()
+	configure_antivirus_installer()
 	build_desktop()
 
 func t(en: String, zh: String) -> String:
 	return state.tr_text(en, zh)
+
+func ensure_virtual_folder(parent_path: String, folder_path: String, folder_name: String) -> void:
+	if not fs_items.has(folder_path):
+		fs_items[folder_path] = {
+			"name": folder_name,
+			"type": "Folder",
+			"kind": "folder",
+			"path": folder_path,
+			"deletable": true,
+			"children": []
+		}
+	if fs_items.has(parent_path) and folder_path not in fs_items[parent_path]["children"]:
+		fs_items[parent_path]["children"].append(folder_path)
+
+func configure_malware_stage() -> void:
+	if stage.id != "malware":
+		return
+	ensure_virtual_folder("C:\\Profiles\\User", "C:\\Profiles\\User\\AppData", "AppData")
+	ensure_virtual_folder("C:\\Profiles\\User\\AppData", "C:\\Profiles\\User\\AppData\\Roaming", "Roaming")
+	ensure_virtual_folder("C:\\Profiles\\User\\AppData\\Roaming", "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache", "SystemCache")
+	ensure_virtual_folder("C:\\Profiles\\User\\AppData\\Roaming\\SystemCache", MALWARE_FOLDER, "UpdateService")
+	fs_items[MALWARE_PATH] = {
+		"name": "host_service.exe",
+		"type": "Executable",
+		"kind": "executable",
+		"path": MALWARE_PATH,
+		"deletable": true,
+		"malware": true
+	}
+	if MALWARE_PATH not in fs_items[MALWARE_FOLDER]["children"]:
+		fs_items[MALWARE_FOLDER]["children"].append(MALWARE_PATH)
+
+func configure_antivirus_installer() -> void:
+	if not antivirus_installer_present:
+		return
+	var separator_index := antivirus_installer_path.rfind("\\")
+	var downloads_path := antivirus_installer_path.substr(0, separator_index) if separator_index >= 0 else ""
+	var installer_name := antivirus_installer_path.substr(separator_index + 1) if separator_index >= 0 else antivirus_installer_path
+	if downloads_path.is_empty():
+		downloads_path = "C:\\Profiles\\User\\Desktop"
+	if not fs_items.has(downloads_path):
+		var parent_separator := downloads_path.rfind("\\")
+		var parent_path := downloads_path.substr(0, parent_separator) if parent_separator >= 0 else "D:\\"
+		ensure_virtual_folder(parent_path, downloads_path, downloads_path.substr(parent_separator + 1))
+	fs_items[antivirus_installer_path] = {
+		"name": installer_name,
+		"type": "Application installer",
+		"kind": "executable",
+		"path": antivirus_installer_path,
+		"deletable": true,
+		"installer_id": "antivirus"
+	}
+	if antivirus_installer_path not in fs_items[downloads_path]["children"]:
+		fs_items[downloads_path]["children"].append(antivirus_installer_path)
+
+func start_stage_processes() -> void:
+	if stage.id != "malware" or not fs_items.has(MALWARE_PATH):
+		return
+	start_process("Host Update Service", MALWARE_PATH, true, true, 88.0)
+	for pid in processes:
+		if processes[pid].path == MALWARE_PATH:
+			processes[pid]["persistent_malware"] = true
+			break
+	malware_restart_timer = Timer.new()
+	malware_restart_timer.one_shot = true
+	malware_restart_timer.wait_time = 3.0
+	malware_restart_timer.timeout.connect(restart_malware_process)
+	add_child(malware_restart_timer)
+
+func restart_malware_process() -> void:
+	if not fs_items.has(MALWARE_PATH):
+		return
+	start_stage_processes()
+	refresh_task_manager_if_open()
 
 func build_desktop() -> void:
 	make_wallpaper()
@@ -77,6 +177,10 @@ func build_desktop() -> void:
 		icon.gui_input.connect(on_desktop_icon_input.bind(app[0]))
 		desktop.add_child(icon)
 		app_buttons[app[0]] = icon
+	if antivirus_present:
+		add_antivirus_desktop_icon()
+	if antivirus_installer_present:
+		add_installer_desktop_icon()
 	window_layer = Control.new()
 	window_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	window_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -87,6 +191,7 @@ func build_desktop() -> void:
 	start_process("Desktop Window Manager", "C:\\Windows\\dwm.exe", false, false, 2.8)
 	start_process("System Security", "C:\\System\\securityd.exe", false, false, 1.7)
 	start_process("Network Service", "C:\\System\\svchost.exe", false, true, 1.1)
+	start_stage_processes()
 
 func make_wallpaper() -> void:
 	desktop = ColorRect.new()
@@ -128,14 +233,21 @@ func make_wallpaper() -> void:
 	center.add_child(panes)
 
 func icon_texture(icon_name: String) -> Texture2D:
-	return load(ICON_DIR + icon_name + ".png") as Texture2D
+	var png_path := ICON_DIR + icon_name + ".png"
+	if ResourceLoader.exists(png_path):
+		return load(png_path) as Texture2D
+	return load(ICON_DIR + icon_name + ".svg") as Texture2D
 
 func app_icon_name(id: String) -> String:
-	var names := {"my_pc":"my_pc", "email":"email", "browser":"browser", "agent":"silly_agent", "recycle":"recycle_bin", "photo_viewer":"photo", "document_viewer":"word_file"}
+	if id == "antivirus":
+		return "antivirus_good" if firewall_enabled and virus_protection_enabled else "antivirus_bad"
+	var names := {"my_pc":"my_pc", "email":"email", "browser":"browser", "agent":"silly_agent", "recycle":"recycle_bin", "photo_viewer":"photo", "document_viewer":"word_file", "antivirus":"antivirus_good"}
 	return names.get(id, "executable")
 
 func file_icon_name(item: Dictionary) -> String:
 	var path: String = item.get("path", "")
+	if item.get("installer_id", "") == "antivirus":
+		return "antivirus_installer"
 	if item.get("kind", "") == "disk":
 		return "disk_c" if path.begins_with("C:") else "disk_d"
 	if item.get("kind", "") == "folder":
@@ -176,6 +288,43 @@ func desktop_icon(icon_name: String, caption: String, pos: Vector2) -> Button:
 	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	return b
 
+func add_antivirus_desktop_icon() -> void:
+	if app_buttons.has("antivirus"):
+		return
+	var icon := desktop_icon("antivirus_good", "Super Security", Vector2(123, 106))
+	icon.gui_input.connect(on_desktop_icon_input.bind("antivirus"))
+	desktop.add_child(icon)
+	if is_instance_valid(window_layer):
+		desktop.move_child(icon, window_layer.get_index())
+	app_buttons["antivirus"] = icon
+
+func add_installer_desktop_icon() -> void:
+	if is_instance_valid(installer_desktop_button):
+		return
+	installer_desktop_button = desktop_icon(
+		"antivirus_installer",
+		t("Super Security Setup", "Super Security 安装程序"),
+		Vector2(123, 194)
+	)
+	installer_desktop_button.gui_input.connect(on_file_input.bind(antivirus_installer_path))
+	desktop.add_child(installer_desktop_button)
+	if is_instance_valid(window_layer):
+		desktop.move_child(installer_desktop_button, window_layer.get_index())
+
+func ensure_antivirus_tray_icon() -> void:
+	if is_instance_valid(antivirus_tray_button):
+		update_antivirus_tray()
+		return
+	antivirus_tray_button = Button.new()
+	antivirus_tray_button.custom_minimum_size = Vector2(28, 28)
+	antivirus_tray_button.flat = true
+	antivirus_tray_button.expand_icon = true
+	antivirus_tray_button.add_theme_constant_override("icon_max_width", 20)
+	antivirus_tray_button.pressed.connect(open_antivirus)
+	system_tray.add_child(antivirus_tray_button)
+	system_tray.move_child(antivirus_tray_button, mini(1, system_tray.get_child_count() - 1))
+	update_antivirus_tray()
+
 func on_desktop_icon_input(event: InputEvent, app_id: String) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_LEFT:
@@ -215,13 +364,15 @@ func make_taskbar() -> void:
 	running.add_theme_constant_override("separation", 2)
 	running.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(running)
-	var tray := HBoxContainer.new()
-	tray.add_theme_constant_override("separation", 8)
-	tray.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_child(tray)
-	tray.add_child(UIFactory.label("▲", 9, Color.WHITE))
-	tray.add_child(UIFactory.label("Wi-Fi", 11, Color.WHITE))
-	tray.add_child(UIFactory.label("🔊", 11, Color.WHITE))
+	system_tray = HBoxContainer.new()
+	system_tray.add_theme_constant_override("separation", 8)
+	system_tray.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(system_tray)
+	system_tray.add_child(UIFactory.label("▲", 9, Color.WHITE))
+	if antivirus_present:
+		ensure_antivirus_tray_icon()
+	system_tray.add_child(UIFactory.label("Wi-Fi", 11, Color.WHITE))
+	system_tray.add_child(UIFactory.label("🔊", 11, Color.WHITE))
 	clock_label = UIFactory.label("", 11, Color.WHITE)
 	clock_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	clock_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -373,13 +524,29 @@ func delete_context_item() -> void:
 		warn(t("The program is running. Close it before deleting it.", "程序正在运行。请先关闭程序再删除。"))
 		return
 	var path: String = current_context.path
-	for process in processes.values():
-		if process.path == path:
-			warn(t("The file is in use by a running process.", "该文件正被运行中的进程使用。"))
+	if current_context.scope == "file":
+		var protected_path := find_non_deletable_item(path)
+		if not protected_path.is_empty():
+			var protected_name: String = fs_items[protected_path].get("name", protected_path)
+			warn(t(
+				"This folder cannot be deleted because it contains a protected item: %s" % protected_name,
+				"无法删除此文件夹，因为其中包含受保护的项目：%s" % protected_name
+			))
 			return
+	if path_has_running_process(path):
+		warn(t(
+			"The item is in use by a running process and cannot be deleted.",
+			"该项目正被运行中的进程使用，无法删除。"
+		))
+		return
+	if is_essential_system_path(path):
+		crash_system()
+		return
 	var recycle_record: Dictionary = current_context.duplicate(true)
 	if current_context.scope == "file":
 		recycle_record["parent_path"] = find_parent_path(path)
+		if fs_items.has(path) and fs_items[path].get("kind", "") == "folder":
+			recycle_record["recursive_items"] = collect_virtual_subtree(path)
 	deleted_items.append(recycle_record)
 	if current_context.scope == "file":
 		remove_from_filesystem(path)
@@ -394,12 +561,102 @@ func delete_context_item() -> void:
 		warn(t("This item cannot be deleted.", "无法删除此项目。"))
 
 func remove_from_filesystem(path: String) -> void:
-	fs_items.erase(path)
+	var completes_malware_stage: bool = stage.id == "malware" and (
+		path == MALWARE_PATH or MALWARE_PATH.begins_with(path.trim_suffix("\\") + "\\")
+	)
+	remove_virtual_item_recursive(path)
 	for item in fs_items.values():
 		if item.has("children"):
 			item.children.erase(path)
+	if (
+		(path == antivirus_installer_path or antivirus_installer_path.begins_with(path.trim_suffix("\\") + "\\"))
+		and is_instance_valid(installer_desktop_button)
+	):
+		installer_desktop_button.queue_free()
+		installer_desktop_button = null
 	if open_windows.has("my_pc"):
 		open_my_pc("C:\\")
+	if completes_malware_stage:
+		remove_malware_process()
+		stage_completed.emit()
+
+func remove_virtual_item_recursive(path: String) -> void:
+	if not fs_items.has(path):
+		return
+	var children: Array = fs_items[path].get("children", []).duplicate()
+	for child_path in children:
+		remove_virtual_item_recursive(child_path)
+	fs_items.erase(path)
+
+func collect_virtual_subtree(path: String) -> Dictionary:
+	var snapshot: Dictionary = {}
+	if not fs_items.has(path):
+		return snapshot
+	snapshot[path] = fs_items[path].duplicate(true)
+	for child_path in fs_items[path].get("children", []):
+		snapshot.merge(collect_virtual_subtree(child_path), true)
+	return snapshot
+
+func find_non_deletable_item(path: String) -> String:
+	if not fs_items.has(path):
+		return ""
+	if not fs_items[path].get("deletable", false):
+		return path
+	for child_path in fs_items[path].get("children", []):
+		var protected_path := find_non_deletable_item(child_path)
+		if not protected_path.is_empty():
+			return protected_path
+	return ""
+
+func path_has_running_process(path: String) -> bool:
+	var folder_prefix := path.trim_suffix("\\") + "\\"
+	var is_folder: bool = fs_items.has(path) and fs_items[path].get("kind", "") == "folder"
+	for process in processes.values():
+		if process.path == path:
+			return true
+		if is_folder and String(process.path).begins_with(folder_prefix):
+			return true
+	return false
+
+func is_essential_system_path(path: String) -> bool:
+	return path == "C:\\System" or path.begins_with("C:\\System\\")
+
+func crash_system() -> void:
+	var crash := ColorRect.new()
+	crash.color = UIFactory.color("#0078d7")
+	crash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crash.mouse_filter = Control.MOUSE_FILTER_STOP
+	desktop.add_child(crash)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	crash.add_child(center)
+	var copy := VBoxContainer.new()
+	copy.add_theme_constant_override("separation", 14)
+	var face := UIFactory.label(":(", 58, Color.WHITE)
+	copy.add_child(face)
+	var heading := UIFactory.label(t(
+		"Your PC ran into a problem and needs to restart.",
+		"你的电脑遇到问题，需要重新启动。"
+	), 21, Color.WHITE)
+	copy.add_child(heading)
+	var detail := UIFactory.label(t(
+		"You deleted essential system files and the system crashed.",
+		"你删除了重要的系统文件，系统已经崩溃。"
+	), 15, Color.WHITE)
+	copy.add_child(detail)
+	center.add_child(copy)
+	stage_failed.emit(t(
+		"You deleted essential system files and the system crashed.",
+		"你删除了重要的系统文件，系统已经崩溃。"
+	))
+
+func remove_malware_process() -> void:
+	if is_instance_valid(malware_restart_timer):
+		malware_restart_timer.stop()
+	for pid in processes.keys():
+		if processes[pid].path == MALWARE_PATH:
+			processes.erase(pid)
+	refresh_task_manager_if_open()
 
 func find_parent_path(path: String) -> String:
 	for candidate_path in fs_items:
@@ -431,7 +688,7 @@ func show_properties(item: Dictionary) -> void:
 	root.add_child(dark_label(t("Attributes:    ☑ Archive     ☐ Hidden", "属性：    ☑ 存档     ☐ 隐藏"), 13, UIFactory.color("#555555")))
 
 func app_display_name(id: String) -> String:
-	var names := {"my_pc":t("My PC", "我的电脑"), "email":t("Email", "电子邮件"), "browser":t("Browser", "浏览器"), "agent":t("SillyAgent", "智慧助手"), "recycle":t("Recycle Bin", "回收站")}
+	var names := {"my_pc":t("My PC", "我的电脑"), "email":t("Email", "电子邮件"), "browser":t("Browser", "浏览器"), "agent":t("SillyAgent", "智慧助手"), "recycle":t("Recycle Bin", "回收站"), "antivirus":"Super Security"}
 	return names.get(id, id)
 
 func open_app(id: String) -> void:
@@ -446,6 +703,7 @@ func open_app(id: String) -> void:
 		"browser": open_browser("")
 		"agent": open_agent()
 		"recycle": open_recycle_bin()
+		"antivirus": open_antivirus()
 
 func create_window(id: String, title: String, window_size := Vector2(650, 365), track_process := true) -> VBoxContainer:
 	if open_windows.has(id) and is_instance_valid(open_windows[id]):
@@ -737,7 +995,8 @@ func window_display_name(id: String) -> String:
 		"browser":t("Browser", "浏览器"),
 		"agent":t("SillyAgent", "智慧助手"),
 		"recycle":t("Recycle Bin", "回收站"),
-		"task_manager":t("Task Manager", "任务管理器")
+		"task_manager":t("Task Manager", "任务管理器"),
+		"antivirus":"Super Security"
 	}
 	return names.get(id, id.capitalize())
 
@@ -876,6 +1135,9 @@ func open_file_item(path: String) -> void:
 	if not fs_items.has(path):
 		return
 	var item: Dictionary = fs_items[path]
+	if item.get("installer_id", "") == "antivirus":
+		open_antivirus_installer()
+		return
 	if item.kind in ["disk", "folder"]:
 		open_my_pc(path)
 	elif item.kind == "photo":
@@ -892,8 +1154,37 @@ func open_file_item(path: String) -> void:
 		var content := dark_label(t("File contents preview\n\nThis is a simulated file used by the security lab.", "文件内容预览\n\n这是安全实验室使用的模拟文件。"), 18)
 		content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		root.add_child(content)
-	if stage.id == "malware" and path.ends_with("login_helper.exe"):
-		stage_completed.emit()
+func open_antivirus_installer() -> void:
+	if antivirus_present:
+		warn(t("Super Security is already installed.", "Super Security 已经安装。"))
+		return
+	var dialog := ConfirmationDialog.new()
+	dialog.title = t("User Account Control", "用户账户控制")
+	dialog.dialog_text = t(
+		"Do you want to allow this app to make changes to your device?\n\nSuper Security Installer",
+		"是否允许此应用对你的设备进行更改？\n\nSuper Security 安装程序"
+	)
+	dialog.get_ok_button().text = t("Yes", "是")
+	dialog.get_cancel_button().text = t("No", "否")
+	dialog.get_label().add_theme_color_override("font_color", UIFactory.color("#1a1a1a"))
+	dialog.get_label().add_theme_font_size_override("font_size", 13)
+	dialog.add_theme_stylebox_override("panel", UIFactory.win10_window())
+	UIFactory.style_win10_button(dialog.get_ok_button())
+	UIFactory.style_win10_button(dialog.get_cancel_button())
+	dialog.confirmed.connect(install_antivirus)
+	add_child(dialog)
+	dialog.popup_centered()
+
+func install_antivirus() -> void:
+	antivirus_present = true
+	firewall_enabled = true
+	virus_protection_enabled = true
+	add_antivirus_desktop_icon()
+	ensure_antivirus_tray_icon()
+	warn(t(
+		"Super Security was installed successfully.",
+		"Super Security 已成功安装。"
+	))
 
 func open_email() -> void:
 	var root := create_window("email", t("SecMail", "安全邮箱"), Vector2(710, 400))
@@ -1032,6 +1323,7 @@ func open_browser(initial: String) -> void:
 	UIFactory.style_win10_button(refresh)
 	nav.add_child(refresh)
 	var address := LineEdit.new()
+	address.name = "BrowserAddress"
 	address.text = initial
 	address.placeholder_text = t("Search or enter an address", "搜索或输入网址")
 	address.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1047,7 +1339,11 @@ func open_browser(initial: String) -> void:
 	root.add_child(nav)
 	var bookmarks := HBoxContainer.new()
 	bookmarks.add_theme_constant_override("separation", 4)
-	for bookmark in [["security.local", t("Security Center", "安全中心")], ["news.local", t("Daily News", "每日新闻")], ["learn.local", t("Learning Portal", "学习中心")]]:
+	for bookmark in [
+		[SUPER_SECURE_ADDRESS, "Super Secure"],
+		[DAILY_NEWS_ADDRESS, t("Daily News", "每日新闻")],
+		[LEARNING_ADDRESS, t("Learning Portal", "学习中心")]
+	]:
 		var b := Button.new()
 		b.text = "★  " + bookmark[1]
 		b.add_theme_font_size_override("font_size", 12)
@@ -1062,33 +1358,203 @@ func open_browser(initial: String) -> void:
 	page_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	page_panel.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#d6d6d6"), 1, 20, 18))
 	root.add_child(page_panel)
-	var page := dark_label(t("SuperBrowser\n\nWelcome to your new tab\nUse a bookmark, enter a local domain, or search with SuperSearch.", "超级浏览器\n\n欢迎打开新标签页\n请选择书签、输入本地域名，或使用超级搜索。"), 15)
-	page.name = "WebPage"
-	page.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	page.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	page.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	page.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	page_panel.add_child(page)
+	var web_content := VBoxContainer.new()
+	web_content.name = "WebContent"
+	web_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	web_content.add_theme_constant_override("separation", 8)
+	page_panel.add_child(web_content)
 	if not initial.is_empty():
 		navigate_browser(initial)
+	else:
+		render_new_tab(web_content)
 
 func navigate_browser(value: String) -> void:
 	if not open_windows.has("browser"):
 		open_browser(value)
 		return
-	var page: Label = open_windows.browser.find_child("WebPage", true, false)
-	var normalized := value.strip_edges().to_lower()
-	var sites := {
-		"security.local": t("Security Center\n\nSystem status: Protected\nFirewall: On\nDefinitions: Up to date", "安全中心\n\n系统状态：受保护\n防火墙：已开启\n病毒库：最新"),
-		"news.local": t("Daily News\n\nTechnology, community, and world headlines appear here.", "每日新闻\n\n此处显示科技、社区和全球新闻。"),
-		"learn.local": t("Learning Portal\n\nSecurity courses and training resources.", "学习中心\n\n安全课程与培训资源。")
-	}
-	if sites.has(normalized):
-		page.text = sites[normalized]
+	var web_content: VBoxContainer = open_windows.browser.find_child("WebContent", true, false)
+	var address: LineEdit = open_windows.browser.find_child("BrowserAddress", true, false)
+	var normalized := normalize_game_address(value)
+	if normalized == "www.supersecure.test":
+		address.text = SUPER_SECURE_ADDRESS
+		render_super_secure_site(web_content)
+	elif normalized == "news.supersearch.test":
+		address.text = DAILY_NEWS_ADDRESS
+		render_news_site(web_content)
+	elif normalized == "learn.supersearch.test":
+		address.text = LEARNING_ADDRESS
+		render_learning_site(web_content)
+	elif normalized == "www.supersearch.test":
+		address.text = SUPER_SEARCH_ADDRESS
+		render_search_home(web_content)
 	elif "." not in normalized:
-		page.text = t("SuperSearch results for: ", "超级搜索结果：") + value + t("\n\nSearch functionality will be added later.", "\n\n搜索功能将在之后添加。")
+		address.text = SUPER_SEARCH_ADDRESS + "/search?q=" + value.strip_edges().replace(" ", "+")
+		render_search_results(web_content, value.strip_edges())
 	else:
-		page.text = t("This simulated website is unavailable.", "此模拟网站不可用。") + "\n" + value
+		address.text = value
+		render_unavailable_site(web_content, value)
+
+func normalize_game_address(value: String) -> String:
+	var normalized := value.strip_edges().to_lower()
+	for prefix in ["https://", "http://"]:
+		if normalized.begins_with(prefix):
+			normalized = normalized.trim_prefix(prefix)
+	normalized = normalized.trim_suffix("/")
+	return normalized
+
+func clear_web_content(content: VBoxContainer) -> void:
+	for child in content.get_children():
+		content.remove_child(child)
+		child.queue_free()
+
+func add_website_header(content: VBoxContainer, brand: String, links: Array[String]) -> void:
+	var header := HBoxContainer.new()
+	header.custom_minimum_size.y = 32
+	var brand_label := dark_label(brand, 16, UIFactory.color("#172033"))
+	brand_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(brand_label)
+	for link in links:
+		var link_button := Button.new()
+		link_button.text = link
+		link_button.add_theme_font_size_override("font_size", 12)
+		link_button.add_theme_color_override("font_color", UIFactory.color("#334155"))
+		link_button.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+		link_button.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#e5f1fb"), Color.TRANSPARENT, 0, 5, 2))
+		link_button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		header.add_child(link_button)
+	content.add_child(header)
+	content.add_child(HSeparator.new())
+
+func render_new_tab(content: VBoxContainer) -> void:
+	clear_web_content(content)
+	var center := CenterContainer.new()
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var copy := VBoxContainer.new()
+	var title := dark_label("SuperBrowser", 23, UIFactory.color("#0078d7"))
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	copy.add_child(title)
+	var hint := dark_label(t("Search the web or enter an address", "搜索网页或输入网址"), 14, UIFactory.color("#64748b"))
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	copy.add_child(hint)
+	center.add_child(copy)
+	content.add_child(center)
+
+func render_super_secure_site(content: VBoxContainer) -> void:
+	clear_web_content(content)
+	add_website_header(content, "◆  Super Secure", [t("Products", "产品"), t("Support", "支持"), t("About", "关于")])
+	var hero := PanelContainer.new()
+	hero.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	hero.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#e8f3fb"), UIFactory.color("#b7d7ee"), 1, 18, 14))
+	var hero_row := HBoxContainer.new()
+	hero_row.add_theme_constant_override("separation", 16)
+	hero.add_child(hero_row)
+	hero_row.add_child(app_icon_rect("antivirus_good", 62))
+	var copy := VBoxContainer.new()
+	copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	copy.add_child(dark_label("Super Security", 22, UIFactory.color("#0b3a60")))
+	var slogan := dark_label(t(
+		"Simple, dependable protection for your digital life.",
+		"为你的数字生活提供简单、可靠的保护。"
+	), 14, UIFactory.color("#334155"))
+	slogan.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	copy.add_child(slogan)
+	var download := Button.new()
+	download.name = "VendorDownload"
+	download.text = t("Download for this PC", "下载到此电脑")
+	download.custom_minimum_size.x = 205
+	UIFactory.style_win10_button(download)
+	download.pressed.connect(download_antivirus_installer)
+	copy.add_child(download)
+	hero_row.add_child(copy)
+	content.add_child(hero)
+	var features := HBoxContainer.new()
+	features.add_theme_constant_override("separation", 8)
+	for feature in [
+		t("✓ Malware scanning", "✓ 恶意软件扫描"),
+		t("✓ Virus protection", "✓ 病毒防护"),
+		t("✓ Network firewall", "✓ 网络防火墙")
+	]:
+		var card := PanelContainer.new()
+		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		card.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#d6d6d6"), 1, 8, 7))
+		var label := dark_label(feature, 12, UIFactory.color("#334155"))
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card.add_child(label)
+		features.add_child(card)
+	content.add_child(features)
+	var footer := dark_label(t(
+		"Super Secure Software  •  Privacy  •  Terms",
+		"Super Secure 软件  •  隐私  •  条款"
+	), 10, UIFactory.color("#718096"))
+	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(footer)
+
+func render_news_site(content: VBoxContainer) -> void:
+	clear_web_content(content)
+	add_website_header(content, t("Daily News", "每日新闻"), [t("World", "国际"), t("Technology", "科技"), t("Local", "本地")])
+	content.add_child(dark_label(t("Today's top stories", "今日要闻"), 21, UIFactory.color("#202020")))
+	for headline in [
+		t("Technology teams announce new security initiatives", "科技团队公布新的安全计划"),
+		t("Community organizations expand digital education", "社区组织扩大数字教育活动"),
+		t("Researchers publish the week's science briefing", "研究人员发布本周科学简报")
+	]:
+		var story := PanelContainer.new()
+		story.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#f8fafc"), UIFactory.color("#d6d6d6"), 1, 10, 7))
+		story.add_child(dark_label(headline, 13, UIFactory.color("#202020")))
+		content.add_child(story)
+
+func render_learning_site(content: VBoxContainer) -> void:
+	clear_web_content(content)
+	add_website_header(content, t("Learning Portal", "学习中心"), [t("Courses", "课程"), t("Library", "资料库"), t("Progress", "进度")])
+	content.add_child(dark_label(t("Security learning center", "安全学习中心"), 21, UIFactory.color("#202020")))
+	content.add_child(dark_label(t(
+		"Browse interactive lessons and practical security exercises.",
+		"浏览互动课程和实用安全练习。"
+	), 14, UIFactory.color("#64748b")))
+	for course in [t("Endpoint fundamentals", "终端基础"), t("Safer communication", "安全通信"), t("Network awareness", "网络意识")]:
+		content.add_child(sidebar_item("▤  " + course))
+
+func render_search_home(content: VBoxContainer) -> void:
+	clear_web_content(content)
+	var center := CenterContainer.new()
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var title := dark_label("SuperSearch", 28, UIFactory.color("#0078d7"))
+	center.add_child(title)
+	content.add_child(center)
+
+func render_search_results(content: VBoxContainer, query: String) -> void:
+	clear_web_content(content)
+	add_website_header(content, "SuperSearch", [t("Web", "网页"), t("Images", "图片"), t("News", "新闻")])
+	content.add_child(dark_label(t("Search results for: ", "搜索结果：") + query, 17, UIFactory.color("#202020")))
+	content.add_child(dark_label(t(
+		"No indexed results are available in this training browser.",
+		"训练浏览器中没有可用的索引结果。"
+	), 13, UIFactory.color("#64748b")))
+
+func render_unavailable_site(content: VBoxContainer, address: String) -> void:
+	clear_web_content(content)
+	var center := CenterContainer.new()
+	center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var message := dark_label(t(
+		"This simulated website is unavailable.",
+		"此模拟网站不可用。"
+	) + "\n" + address, 16, UIFactory.color("#64748b"))
+	message.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	center.add_child(message)
+	content.add_child(center)
+
+func download_antivirus_installer() -> void:
+	if antivirus_installer_present and fs_items.has(antivirus_installer_path):
+		warn(t("The installer is already on the desktop.", "安装程序已在桌面上。"))
+		return
+	antivirus_installer_present = true
+	antivirus_installer_path = "C:\\Profiles\\User\\Desktop\\SuperSecuritySetup.exe"
+	configure_antivirus_installer()
+	add_installer_desktop_icon()
+	warn(t(
+		"SuperSecuritySetup.exe was downloaded to the desktop.",
+		"SuperSecuritySetup.exe 已下载到桌面。"
+	))
 
 func open_agent() -> void:
 	var root := create_window("agent", t("SillyAgent", "智慧助手"), Vector2(650, 390))
@@ -1138,6 +1604,54 @@ func open_agent() -> void:
 	UIFactory.style_win10_button(send)
 	input_row.add_child(send)
 	conversation.add_child(input_row)
+
+func open_antivirus() -> void:
+	if not antivirus_present:
+		return
+	if open_windows.has("antivirus") and is_instance_valid(open_windows["antivirus"]):
+		restore_window("antivirus")
+		return
+	var root := create_window("antivirus", "Super Security", Vector2(690, 410))
+	var antivirus: AntivirusApp = load("res://scenes/antivirus_app.tscn").instantiate()
+	antivirus.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	antivirus.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(antivirus)
+	antivirus.setup(state, firewall_enabled, virus_protection_enabled)
+	antivirus.protection_changed.connect(on_antivirus_protection_changed)
+	antivirus.scan_completed.connect(on_antivirus_scan_completed.bind(antivirus))
+	antivirus.clean_requested.connect(clean_detected_malware.bind(antivirus))
+
+func on_antivirus_protection_changed(firewall: bool, virus_protection: bool) -> void:
+	firewall_enabled = firewall
+	virus_protection_enabled = virus_protection
+	update_antivirus_tray()
+	refresh_task_buttons()
+
+func on_antivirus_scan_completed(antivirus: AntivirusApp) -> void:
+	if fs_items.has(MALWARE_PATH):
+		antivirus.show_threat_detected(fs_items[MALWARE_PATH].name)
+
+func clean_detected_malware(antivirus: AntivirusApp) -> void:
+	if not fs_items.has(MALWARE_PATH):
+		return
+	remove_virtual_item_recursive(MALWARE_FOLDER)
+	for item in fs_items.values():
+		if item.has("children"):
+			item.children.erase(MALWARE_FOLDER)
+	remove_malware_process()
+	antivirus.show_clean_result()
+	stage_completed.emit()
+
+func update_antivirus_tray() -> void:
+	if not is_instance_valid(antivirus_tray_button):
+		return
+	var fully_protected := firewall_enabled and virus_protection_enabled
+	antivirus_tray_button.icon = icon_texture("antivirus_good" if fully_protected else "antivirus_bad")
+	antivirus_tray_button.tooltip_text = (
+		t("Super Security: Your device is protected", "Super Security：设备已受保护")
+		if fully_protected
+		else t("Super Security: Action needed", "Super Security：需要操作")
+	)
 
 func open_recycle_bin() -> void:
 	var root := create_window("recycle", t("Recycle Bin", "回收站"), Vector2(600, 350))
@@ -1222,10 +1736,16 @@ func restore_recycle_item(index: int) -> void:
 	var item: Dictionary = deleted_items[index]
 	match item.get("scope", ""):
 		"file":
-			var restored: Dictionary = item.duplicate(true)
-			restored.erase("scope")
-			restored.erase("parent_path")
-			fs_items[item.path] = restored
+			if item.has("recursive_items"):
+				var subtree: Dictionary = item.recursive_items
+				for restored_path in subtree:
+					fs_items[restored_path] = subtree[restored_path].duplicate(true)
+			else:
+				var restored: Dictionary = item.duplicate(true)
+				restored.erase("scope")
+				restored.erase("parent_path")
+				restored.erase("recursive_items")
+				fs_items[item.path] = restored
 			var parent_path: String = item.get("parent_path", "root")
 			if parent_path != "root" and fs_items.has(parent_path):
 				var children: Array = fs_items[parent_path].get("children", [])
@@ -1245,7 +1765,8 @@ func restore_desktop_app(id: String) -> void:
 	var definitions := {
 		"my_pc":["my_pc", t("My PC", "我的电脑"), 0], "email":["email", t("Email", "电子邮件"), 1],
 		"browser":["browser", t("Browser", "浏览器"), 2], "agent":["silly_agent", t("SillyAgent", "智慧助手"), 3],
-		"recycle":["recycle_bin", t("Recycle Bin", "回收站"), 4]
+		"recycle":["recycle_bin", t("Recycle Bin", "回收站"), 4],
+		"antivirus":["antivirus_good", "Super Security", 5]
 	}
 	if not definitions.has(id):
 		return
@@ -1283,10 +1804,14 @@ func empty_recycle_bin() -> void:
 
 func open_task_manager() -> void:
 	var root := create_window("task_manager", t("Task Manager", "任务管理器"), Vector2(690, 400), false)
+	ensure_process_context_menu()
 	var total := 0.0
 	for process in processes.values():
 		total += process.cpu
-	if total > 35.0:
+	var malware_is_active := false
+	for process in processes.values():
+		malware_is_active = malware_is_active or process.path == MALWARE_PATH
+	if total > 35.0 and not malware_is_active:
 		var scale := 35.0 / total
 		for process in processes.values():
 			process.cpu *= scale
@@ -1334,6 +1859,8 @@ func open_task_manager() -> void:
 		row.add_theme_constant_override("separation", 4)
 		var label := dark_label("%s  (PID %d)" % [process.name, pid], 13)
 		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		label.tooltip_text = t("Right-click for process options", "右键单击以查看进程选项")
+		label.gui_input.connect(on_process_row_input.bind(pid))
 		row.add_child(label)
 		var cpu := ProgressBar.new()
 		cpu.min_value = 0
@@ -1358,8 +1885,46 @@ func open_task_manager() -> void:
 	var idle_name := dark_label("IDLE", 14)
 	idle_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	idle.add_child(idle_name)
-	idle.add_child(dark_label("%.1f%%" % (100.0 - total), 14, UIFactory.color("#15803d")))
+	idle.add_child(dark_label("%.1f%%" % maxf(0.0, 100.0 - total), 14, UIFactory.color("#15803d")))
 	list.add_child(idle)
+
+func ensure_process_context_menu() -> void:
+	if is_instance_valid(process_context_menu):
+		return
+	process_context_menu = PopupMenu.new()
+	process_context_menu.id_pressed.connect(on_process_context_action)
+	add_child(process_context_menu)
+
+func on_process_row_input(event: InputEvent, pid: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		context_process_pid = pid
+		process_context_menu.clear()
+		process_context_menu.add_item(t("Open file location", "打开文件所在位置"), 1)
+		process_context_menu.add_item(t("End task", "结束任务"), 2)
+		process_context_menu.position = Vector2i(event.global_position)
+		process_context_menu.popup()
+
+func on_process_context_action(action_id: int) -> void:
+	if not processes.has(context_process_pid):
+		return
+	if action_id == 1:
+		open_process_file_location(context_process_pid)
+	elif action_id == 2:
+		kill_process(context_process_pid)
+
+func open_process_file_location(pid: int) -> void:
+	if not processes.has(pid):
+		return
+	if not processes[pid].path_visible:
+		warn(t("Access denied. The process path is protected.", "访问被拒绝。该进程路径受保护。"))
+		return
+	var path: String = processes[pid].path
+	var separator := path.rfind("\\")
+	var parent := path.substr(0, separator) if separator >= 0 else "root"
+	if fs_items.has(parent):
+		open_my_pc(parent)
+	else:
+		warn(t("Process path:\n", "进程路径：\n") + path)
 
 func show_process_path(pid: int) -> void:
 	if not processes.has(pid):
@@ -1377,6 +1942,7 @@ func kill_process(pid: int) -> void:
 		warn(t("This is a protected system process and cannot be ended.", "这是受保护的系统进程，无法结束。"))
 		return
 	var window_id: String = process.window_id
+	var restart_malware: bool = process.get("persistent_malware", false)
 	processes.erase(pid)
 	if not window_id.is_empty() and open_windows.has(window_id):
 		open_windows[window_id].queue_free()
@@ -1384,6 +1950,8 @@ func kill_process(pid: int) -> void:
 	refresh_window_borders()
 	refresh_task_buttons()
 	open_task_manager()
+	if restart_malware and fs_items.has(MALWARE_PATH) and is_instance_valid(malware_restart_timer):
+		malware_restart_timer.start()
 
 func warn(message: String) -> void:
 	var dialog := AcceptDialog.new()
