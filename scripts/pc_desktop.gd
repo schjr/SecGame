@@ -64,16 +64,16 @@ var fs_items: Dictionary = virtual_fs.items
 var browser_pages: BrowserPages
 var window_manager: DesktopWindowManager
 var sound_effects: SoundEffects
-var ai_step := 0
-var ai_conversation: VBoxContainer
-var ai_choice_box: VBoxContainer
-var ai_history: Array[Dictionary] = []
+var ai_security_app: AISecurityApp
+var email_app: DesktopEmailApp
 
 func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	state = game_state
 	stage = stage_data
 	browser_pages = BrowserPages.new(self)
 	window_manager = DesktopWindowManager.new(self)
+	ai_security_app = AISecurityApp.new(self)
+	email_app = DesktopEmailApp.new(self)
 	antivirus_present = stage.get("antivirus_present", false)
 	antivirus_installer_present = stage.get("antivirus_installer_present", false)
 	antivirus_installer_path = stage.get("antivirus_installer_path", "C:\\Profiles\\User\\Desktop\\SuperSecuritySetup.exe")
@@ -1130,121 +1130,10 @@ func install_antivirus() -> void:
 	), false)
 
 func open_email() -> void:
-	var root := create_window("email", t("SecMail", "安全邮箱"), Vector2(710, 400))
-	var toolbar := make_app_toolbar()
-	var compose := Button.new()
-	compose.text = "✉  " + t("New mail", "写邮件")
-	UIFactory.style_win10_button(compose)
-	compose.pressed.connect(open_compose)
-	toolbar.add_child(compose)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	toolbar.add_child(spacer)
-	var sync := Button.new()
-	sync.text = "↻  " + t("Sync", "同步")
-	UIFactory.style_win10_button(sync)
-	toolbar.add_child(sync)
-	root.add_child(toolbar)
-	var workspace := HBoxContainer.new()
-	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	workspace.add_theme_constant_override("separation", 8)
-	root.add_child(workspace)
-	var side := make_sidebar(145)
-	side.add_child(dark_label(t("FOLDERS", "文件夹"), 11, UIFactory.color("#666666")))
-	side.add_child(sidebar_item("▣  " + t("Inbox", "收件箱") + "  %d" % stage.get("emails", []).size(), true))
-	side.add_child(sidebar_item("☆  " + t("Drafts", "草稿")))
-	side.add_child(sidebar_item("➤  " + t("Sent", "已发送")))
-	side.add_child(sidebar_item("♲  " + t("Deleted", "已删除")))
-	workspace.add_child(side)
-	var inbox := VBoxContainer.new()
-	inbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	inbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inbox.add_child(dark_label(t("Focused inbox", "重点收件箱"), 16, UIFactory.color("#202020")))
-	workspace.add_child(inbox)
-	var emails: Array = stage.get("emails", [])
-	if emails.is_empty():
-		var empty := dark_label(t("You're all caught up\nThere is no mail to show.", "所有邮件都已处理\n没有可显示的邮件。"), 18, UIFactory.color("#64748b"))
-		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		empty.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
-		inbox.add_child(empty)
-		return
-	var scroll := ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	inbox.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", 4)
-	scroll.add_child(list)
-	for i in emails.size():
-		if deleted_mail.get(i, false):
-			continue
-		var mail: Dictionary = emails[i]
-		var row := Button.new()
-		row.text = mail.from + "\n" + mail.subject
-		row.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		row.custom_minimum_size.y = 62
-		row.add_theme_font_size_override("font_size", 13)
-		row.add_theme_color_override("font_color", UIFactory.color("#0f172a"))
-		row.add_theme_color_override("font_hover_color", UIFactory.color("#0f172a"))
-		row.add_theme_stylebox_override("normal", UIFactory.flat(Color.WHITE, UIFactory.color("#e0e0e0"), 1, 8, 4))
-		row.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#e5f1fb"), UIFactory.color("#0078d7"), 1, 8, 4))
-		row.add_theme_stylebox_override("pressed", UIFactory.flat(UIFactory.color("#cce4f7"), UIFactory.color("#005499"), 1, 8, 4))
-		row.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		row.gui_input.connect(on_mail_input.bind(i, mail))
-		list.add_child(row)
-
-func on_mail_input(event: InputEvent, index: int, mail: Dictionary) -> void:
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			read_mail(index, mail)
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			current_context = {"scope":"mail", "name":mail.subject, "type":t("Email message", "电子邮件"), "path":t("Mailbox/Inbox", "邮箱/收件箱"), "deletable":true, "index":index, "mail":mail}
-			show_context_menu(event.global_position)
+	email_app.open()
 
 func read_mail(index: int, mail: Dictionary) -> void:
-	var root := create_window("mail_read", t("Message", "邮件") + " — " + mail.subject, Vector2(600, 340), false)
-	root.add_child(dark_label(t("From: ", "发件人：") + mail.from, 14))
-	root.add_child(dark_label(t("Subject: ", "主题：") + mail.subject, 16))
-	var body := dark_label(mail.body, 14)
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(body)
-	var report := Button.new()
-	report.text = t("Report as suspicious", "举报可疑邮件")
-	UIFactory.style_win10_button(report)
-	report.pressed.connect(report_mail.bind(index, mail))
-	root.add_child(report)
-
-func report_mail(index: int, mail: Dictionary) -> void:
-	if mail.spam:
-		reported[index] = true
-	else:
-		warn(t("This appears to be a legitimate message.", "这似乎是一封正常邮件。"))
-	var needed := 0
-	for item in stage.get("emails", []):
-		if item.spam:
-			needed += 1
-	if needed > 0 and reported.size() == needed:
-		stage_completed.emit()
-
-func open_compose() -> void:
-	var root := create_window("compose", t("New message", "新邮件"), Vector2(560, 340), false)
-	for placeholder in [t("To", "收件人"), t("Subject", "主题")]:
-		var field := LineEdit.new()
-		field.placeholder_text = placeholder
-		UIFactory.style_win10_lineedit(field)
-		root.add_child(field)
-	var body := TextEdit.new()
-	body.placeholder_text = t("Write a message...", "撰写邮件……")
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	UIFactory.style_win10_textedit(body)
-	root.add_child(body)
-	var send := Button.new()
-	send.text = t("Send", "发送")
-	UIFactory.style_win10_button(send)
-	send.pressed.connect(func(): warn(t("Sending mail is unavailable in this training computer.", "训练电脑暂不支持发送邮件。")))
-	root.add_child(send)
+	email_app.read_mail(index, mail)
 
 func open_browser(initial: String) -> void:
 	var root := create_window("browser", t("SuperBrowser", "超级浏览器"), Vector2(710, 400))
@@ -1451,176 +1340,7 @@ func open_agent() -> void:
 	conversation.add_child(input_row)
 
 func open_ai_security_agent() -> void:
-	var root := create_window("agent", "Codex — " + t("Student Data Review", "学生数据审查"), Vector2(760, 430))
-	var workspace := HBoxContainer.new()
-	var codex_theme := Theme.new()
-	codex_theme.default_font = CJK_UI_FONT
-	workspace.theme = codex_theme
-	workspace.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	workspace.add_theme_constant_override("separation", 0)
-	root.add_child(workspace)
-	var sidebar_panel := PanelContainer.new()
-	sidebar_panel.custom_minimum_size.x = 176
-	sidebar_panel.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#171717"), UIFactory.color("#2e2e2e"), 1, 12, 12))
-	workspace.add_child(sidebar_panel)
-	var sidebar := VBoxContainer.new()
-	sidebar.add_theme_constant_override("separation", 10)
-	sidebar_panel.add_child(sidebar)
-	var brand := HBoxContainer.new()
-	brand.add_child(dark_label("◆", 18, UIFactory.color("#f4f4f4")))
-	brand.add_child(dark_label("Codex", 17, UIFactory.color("#f4f4f4")))
-	sidebar.add_child(brand)
-	var new_task := Button.new()
-	new_task.text = "＋  " + t("New task", "新任务")
-	new_task.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	new_task.add_theme_color_override("font_color", UIFactory.color("#e8e8e8"))
-	new_task.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#262626"), UIFactory.color("#3b3b3b"), 1, 8, 5))
-	new_task.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#333333"), UIFactory.color("#555555"), 1, 8, 5))
-	new_task.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	sidebar.add_child(new_task)
-	sidebar.add_child(dark_label(t("TASKS", "任务"), 10, UIFactory.color("#8d8d8d")))
-	var current_task := Button.new()
-	current_task.text = t("Student data review", "学生数据审查")
-	current_task.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	current_task.add_theme_color_override("font_color", Color.WHITE)
-	current_task.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#303030"), Color.TRANSPARENT, 0, 8, 5))
-	current_task.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	sidebar.add_child(current_task)
-	var side_spacer := Control.new()
-	side_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	sidebar.add_child(side_spacer)
-	sidebar.add_child(dark_label("▣  " + t("Local workspace", "本地工作区"), 11, UIFactory.color("#b5b5b5")))
-	sidebar.add_child(dark_label("●  " + t("Offline · no API", "离线 · 无 API"), 11, UIFactory.color("#72c391")))
-	var main := VBoxContainer.new()
-	main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	main.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main.add_theme_constant_override("separation", 7)
-	workspace.add_child(main)
-	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
-	var title := dark_label(t("Student data review", "学生数据审查"), 16, UIFactory.color("#202020"))
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	header.add_child(title)
-	header.add_child(dark_label(t("Step %d of 4" % mini(ai_step + 1, 4), "第 %d / 4 步" % mini(ai_step + 1, 4)), 11, UIFactory.color("#6b6b6b")))
-	main.add_child(header)
-	main.add_child(HSeparator.new())
-	var chat_scroll := ScrollContainer.new()
-	chat_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	chat_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	main.add_child(chat_scroll)
-	ai_conversation = VBoxContainer.new()
-	ai_conversation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	ai_conversation.add_theme_constant_override("separation", 10)
-	chat_scroll.add_child(ai_conversation)
-	var composer := PanelContainer.new()
-	composer.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#bdbdbd"), 1, 10, 8))
-	main.add_child(composer)
-	ai_choice_box = VBoxContainer.new()
-	ai_choice_box.add_theme_constant_override("separation", 5)
-	composer.add_child(ai_choice_box)
-	render_ai_step()
-
-func render_ai_step() -> void:
-	for child in ai_conversation.get_children():
-		child.queue_free()
-	for child in ai_choice_box.get_children():
-		child.queue_free()
-	var steps_en := [
-		["1 • Understand the structure", "What should the assistant inspect first?", ["Open the one-row schema example", "Open the complete 1,200-record roster", "Email the roster to a remote model"], 0],
-		["2 • Prepare the data", "How should identifiers be handled before analysis?", ["Remove names, IDs, addresses, birth dates and contacts locally", "Keep every field for maximum accuracy", "Replace names only; keep addresses and contacts"], 0],
-		["3 • Run the analysis", "Where should the learning-support summary be computed?", ["Use the local offline analysis engine on minimized fields", "Upload the full workbook to a public chatbot", "Paste selected student rows into an online prompt"], 0],
-		["4 • Share the result", "What may leave the secure computer?", ["Aggregate counts with small groups suppressed", "A list of students needing support", "The original workbook plus the report"], 0]
-	]
-	var steps_zh := [
-		["1 • 了解结构", "助手首先应该查看什么？", ["打开单行数据结构示例", "打开完整的 1,200 条学生名册", "将名册发给远程模型"], 0],
-		["2 • 准备数据", "分析前应如何处理标识信息？", ["在本地删除姓名、ID、地址、生日和联系方式", "保留所有字段以获得最高准确度", "只替换姓名，保留地址和联系方式"], 0],
-		["3 • 执行分析", "学习支持汇总应在哪里计算？", ["使用本地离线引擎分析最少字段", "将完整工作簿上传到公共聊天机器人", "把部分学生记录粘贴到在线提示中"], 0],
-		["4 • 分享结果", "哪些内容可以离开安全电脑？", ["仅分享汇总计数，并隐藏人数过少的群组", "需要帮助的学生名单", "原始工作簿和分析报告"], 0]
-	]
-	if ai_history.is_empty():
-		ai_history.append({"role":"codex", "text":t(
-			"I can help complete the Aurora District analysis without sending student records to a remote model. I’ll ask for one decision at each step.",
-			"我可以协助完成极光区分析，并且不会把学生记录发送给远程模型。我会在每个步骤询问一个决定。"
-		)})
-	for message in ai_history:
-		add_ai_message(message.role, message.text)
-	if ai_step >= 4:
-		add_ai_message("codex", t(
-			"✓ Analysis complete. District-level support trends were produced locally. No student record left this computer.",
-			"✓ 分析完成。已在本地生成地区级学习支持趋势，没有任何学生记录离开本机。"
-		))
-		ai_choice_box.add_child(dark_label(t("Task completed", "任务已完成"), 12, UIFactory.color("#247244")))
-		return
-	var step: Array = (steps_zh if state.language == "zh" else steps_en)[ai_step]
-	add_ai_message("codex", step[0] + "\n" + step[1])
-	var input := Button.new()
-	input.text = t("Choose an action…", "选择操作……")
-	input.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	input.custom_minimum_size.y = 34
-	input.add_theme_color_override("font_color", UIFactory.color("#767676"))
-	input.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
-	input.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#f5f5f5"), Color.TRANSPARENT, 0, 5, 3))
-	input.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-	input.pressed.connect(show_ai_choices.bind(input, step))
-	ai_choice_box.add_child(input)
-
-func add_ai_message(role: String, text: String) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 8)
-	if role == "user":
-		var push := Control.new()
-		push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(push)
-	var avatar := dark_label("◆" if role == "codex" else "You", 11, UIFactory.color("#ffffff") if role == "codex" else UIFactory.color("#343434"))
-	avatar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	avatar.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	avatar.custom_minimum_size = Vector2(30, 30)
-	avatar.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#1f1f1f") if role == "codex" else UIFactory.color("#e8e8e8"), Color.TRANSPARENT, 0, 5, 4))
-	row.add_child(avatar)
-	var bubble := Label.new()
-	bubble.text = text
-	bubble.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bubble.add_theme_font_size_override("font_size", 13)
-	bubble.add_theme_color_override("font_color", UIFactory.color("#262626"))
-	bubble.custom_minimum_size.x = 310 if role == "codex" else 250
-	bubble.size_flags_horizontal = Control.SIZE_EXPAND_FILL if role == "codex" else Control.SIZE_SHRINK_END
-	bubble.add_theme_stylebox_override("normal", UIFactory.flat(Color.TRANSPARENT if role == "codex" else UIFactory.color("#eeeeee"), Color.TRANSPARENT, 0, 8, 6))
-	row.add_child(bubble)
-	ai_conversation.add_child(row)
-
-func show_ai_choices(input: Button, step: Array) -> void:
-	input.queue_free()
-	for i in step[2].size():
-		var choice := Button.new()
-		choice.text = step[2][i]
-		choice.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		choice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		choice.custom_minimum_size.y = 34
-		choice.add_theme_font_size_override("font_size", 12)
-		choice.add_theme_color_override("font_color", UIFactory.color("#262626"))
-		choice.add_theme_stylebox_override("normal", UIFactory.flat(Color.WHITE, UIFactory.color("#dedede"), 1, 8, 4))
-		choice.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#f0f0f0"), UIFactory.color("#a8a8a8"), 1, 8, 4))
-		choice.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
-		choice.pressed.connect(select_ai_choice.bind(i, step[3], step[2][i], step[0] + "\n" + step[1]))
-		ai_choice_box.add_child(choice)
-
-func select_ai_choice(index: int, correct_index: int, choice_text: String, question_text: String) -> void:
-	ai_history.append({"role":"codex", "text":question_text})
-	ai_history.append({"role":"user", "text":choice_text})
-	if index != correct_index:
-		stage_failed.emit(t("Unsafe decision: sensitive student data could be exposed. The project has been stopped.", "不安全的决定：学生敏感数据可能泄露。项目已停止。"))
-		return
-	ai_history.append({"role":"codex", "text":t(
-		"Good choice. This keeps the workflow private and limits unnecessary access to personal data.",
-		"选择正确。这样可以保持流程私密，并限制对个人数据的不必要访问。"
-	)})
-	ai_step += 1
-	if ai_step >= 4:
-		render_ai_step()
-		stage_completed.emit()
-	else:
-		open_ai_security_agent()
+	ai_security_app.open()
 
 func open_antivirus() -> void:
 	if not antivirus_present:
