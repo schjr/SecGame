@@ -51,8 +51,10 @@ const STAGES := [
 		"id":"ai_security",
 		"title_en":"AI Security",
 		"title_zh":"人工智能安全",
-		"desc_en":"Stage content will be defined later.",
-		"desc_zh":"关卡内容将在之后定义。",
+		"desc_en":"Complete a district analysis without exposing sensitive student records.",
+		"desc_zh":"在不泄露学生敏感记录的前提下完成地区数据分析。",
+		"note_en":"The Aurora District needs a learning-support summary from 1,200 synthetic student records.\n\nUse SillyAgent's guided workflow. Keep personal data on this computer, minimize what the system sees, and release only safe aggregate findings.",
+		"note_zh":"极光区需要根据 1,200 条合成学生记录制作学习支持汇总。\n\n请使用智慧助手的引导流程。将个人数据留在本机，尽量减少系统接触的数据，并且只发布安全的汇总结果。",
 		"emails":[]
 	}
 ]

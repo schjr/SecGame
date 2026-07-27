@@ -6,6 +6,7 @@ signal stage_failed(message: String)
 
 const TASKBAR_H := 40.0
 const ICON_DIR := "res://assets/icons/"
+const CJK_UI_FONT: Font = preload("res://assets/fonts/LXGWWenKaiLite-Regular.ttf")
 const MALWARE_PATH := "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache\\UpdateService\\host_service.exe"
 const MALWARE_FOLDER := "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache\\UpdateService"
 const EMERGENCY_ARCHIVE_PATH := "C:\\Profiles\\User\\Desktop\\SuperSecurity_EmergencyKit.zip"
@@ -63,6 +64,10 @@ var fs_items: Dictionary = virtual_fs.items
 var browser_pages: BrowserPages
 var window_manager: DesktopWindowManager
 var sound_effects: SoundEffects
+var ai_step := 0
+var ai_conversation: VBoxContainer
+var ai_choice_box: VBoxContainer
+var ai_history: Array[Dictionary] = []
 
 func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	state = game_state
@@ -76,6 +81,7 @@ func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	virus_protection_enabled = stage.get("virus_protection_enabled", true)
 	configure_malware_stage()
 	configure_antivirus_installer()
+	configure_ai_security_stage()
 	build_desktop()
 
 func t(en: String, zh: String) -> String:
@@ -137,6 +143,19 @@ func configure_antivirus_installer() -> void:
 	}
 	if antivirus_installer_path not in fs_items[downloads_path]["children"]:
 		fs_items[downloads_path]["children"].append(antivirus_installer_path)
+
+func configure_ai_security_stage() -> void:
+	if stage.id != "ai_security":
+		return
+	var folder := "D:\\Student Analytics"
+	ensure_virtual_folder("D:\\", folder, "Student Analytics")
+	var full_path := folder + "\\district_students_synthetic.xlsx"
+	var sample_path := folder + "\\student_schema_example.xlsx"
+	fs_items[full_path] = {"name":"district_students_synthetic.xlsx", "type":"Microsoft Excel Worksheet", "kind":"spreadsheet", "path":full_path, "deletable":true, "student_workbook":"full"}
+	fs_items[sample_path] = {"name":"student_schema_example.xlsx", "type":"Microsoft Excel Worksheet", "kind":"spreadsheet", "path":sample_path, "deletable":true, "student_workbook":"sample"}
+	for item_path in [full_path, sample_path]:
+		if item_path not in fs_items[folder]["children"]:
+			fs_items[folder]["children"].append(item_path)
 
 func start_stage_processes() -> void:
 	if stage.id not in ["malware", "antivirus"] or not fs_items.has(MALWARE_PATH):
@@ -256,6 +275,8 @@ func file_icon_name(item: Dictionary) -> String:
 		return "pdf_file"
 	if path.to_lower().ends_with(".docx"):
 		return "word_file"
+	if path.to_lower().ends_with(".xlsx"):
+		return "text_file"
 	if item.get("kind", "") == "text":
 		return "text_file"
 	return "system_file"
@@ -1006,6 +1027,9 @@ func open_file_item(path: String) -> void:
 	if item.get("emergency_executable", false):
 		open_emergency_kit()
 		return
+	if item.get("student_workbook", "") != "":
+		open_student_workbook(item)
+		return
 	if item.kind in ["disk", "folder"]:
 		open_my_pc(path)
 	elif item.kind == "photo":
@@ -1022,6 +1046,54 @@ func open_file_item(path: String) -> void:
 		var content := dark_label(t("File contents preview\n\nThis is a simulated file used by the security lab.", "文件内容预览\n\n这是安全实验室使用的模拟文件。"), 18)
 		content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		root.add_child(content)
+
+func open_student_workbook(item: Dictionary) -> void:
+	var is_full: bool = item.get("student_workbook", "") == "full"
+	var root := create_window("document_viewer", "SheetBook — " + item.name, Vector2(720, 405))
+	var toolbar := make_app_toolbar()
+	for label in [t("File", "文件"), t("Home", "开始"), t("Data", "数据"), t("Review", "审阅")]:
+		var button := Button.new()
+		button.text = label
+		UIFactory.style_win10_button(button)
+		toolbar.add_child(button)
+	root.add_child(toolbar)
+	root.add_child(dark_label(t(
+		"⚠ SYNTHETIC TRAINING DATA — RESTRICTED • %s" % ("1,200 records" if is_full else "1 schema example"),
+		"⚠ 合成训练数据 — 受限 • %s" % ("1,200 条记录" if is_full else "1 条结构示例")
+	), 12, UIFactory.color("#6d4c1d")))
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	root.add_child(scroll)
+	var grid := GridContainer.new()
+	grid.columns = 9
+	grid.add_theme_constant_override("h_separation", 1)
+	grid.add_theme_constant_override("v_separation", 1)
+	scroll.add_child(grid)
+	var headers := ["Student ID", "Full Name", "Gender", "Age", "Date of Birth", "Home Address", "School", "Grade", "Attendance"]
+	var rows := [
+		["SYN-00001", "Yutong Lin", "Female", "11", "2015-01-01", "20 Cedar Lane", "North Harbor Middle", "6", "82.0%"],
+		["SYN-00002", "Jiahao Wu", "Non-binary", "12", "2014-08-12", "37 Orchid Avenue", "Brighton District", "7", "83.3%"],
+		["SYN-00003", "Siyu Guo", "Male", "13", "2013-03-23", "54 Pine Street", "Maple Grove", "8", "84.6%"]
+	]
+	for heading in headers:
+		grid.add_child(sheet_cell(heading, true))
+	for row in (rows if is_full else [rows[0]]):
+		for value in row:
+			grid.add_child(sheet_cell(value, false))
+	if is_full:
+		for i in range(4, 13):
+			var generated := ["SYN-%05d" % i, "Synthetic Student %d" % i, ["Female","Male","Non-binary"][i % 3], str(11 + i % 8), "201%d-0%d-1%d" % [i % 7, 1 + i % 8, i % 9], "%d Willow Street" % (20 + i * 17), "Riverside Academy", str(6 + i % 7), "%d.%d%%" % [82 + i, i % 10]]
+			for value in generated:
+				grid.add_child(sheet_cell(value, false))
+
+func sheet_cell(value: String, header: bool) -> Label:
+	var cell := dark_label(value, 11, Color.WHITE if header else UIFactory.color("#27233a"))
+	cell.custom_minimum_size = Vector2(112, 26)
+	cell.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	cell.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	cell.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#40376e") if header else UIFactory.color("#f7f3fb"), UIFactory.color("#d8d1e5"), 1, 5, 3))
+	return cell
 func open_antivirus_installer() -> void:
 	if antivirus_present:
 		warn(t(
@@ -1327,6 +1399,9 @@ func extract_emergency_kit() -> void:
 	open_my_pc(EMERGENCY_FOLDER_PATH)
 
 func open_agent() -> void:
+	if stage.id == "ai_security":
+		open_ai_security_agent()
+		return
 	var root := create_window("agent", t("SillyAgent", "智慧助手"), Vector2(650, 390))
 	var workspace := HBoxContainer.new()
 	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -1374,6 +1449,178 @@ func open_agent() -> void:
 	UIFactory.style_win10_button(send)
 	input_row.add_child(send)
 	conversation.add_child(input_row)
+
+func open_ai_security_agent() -> void:
+	var root := create_window("agent", "Codex — " + t("Student Data Review", "学生数据审查"), Vector2(760, 430))
+	var workspace := HBoxContainer.new()
+	var codex_theme := Theme.new()
+	codex_theme.default_font = CJK_UI_FONT
+	workspace.theme = codex_theme
+	workspace.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	workspace.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	workspace.add_theme_constant_override("separation", 0)
+	root.add_child(workspace)
+	var sidebar_panel := PanelContainer.new()
+	sidebar_panel.custom_minimum_size.x = 176
+	sidebar_panel.add_theme_stylebox_override("panel", UIFactory.flat(UIFactory.color("#171717"), UIFactory.color("#2e2e2e"), 1, 12, 12))
+	workspace.add_child(sidebar_panel)
+	var sidebar := VBoxContainer.new()
+	sidebar.add_theme_constant_override("separation", 10)
+	sidebar_panel.add_child(sidebar)
+	var brand := HBoxContainer.new()
+	brand.add_child(dark_label("◆", 18, UIFactory.color("#f4f4f4")))
+	brand.add_child(dark_label("Codex", 17, UIFactory.color("#f4f4f4")))
+	sidebar.add_child(brand)
+	var new_task := Button.new()
+	new_task.text = "＋  " + t("New task", "新任务")
+	new_task.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	new_task.add_theme_color_override("font_color", UIFactory.color("#e8e8e8"))
+	new_task.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#262626"), UIFactory.color("#3b3b3b"), 1, 8, 5))
+	new_task.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#333333"), UIFactory.color("#555555"), 1, 8, 5))
+	new_task.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	sidebar.add_child(new_task)
+	sidebar.add_child(dark_label(t("TASKS", "任务"), 10, UIFactory.color("#8d8d8d")))
+	var current_task := Button.new()
+	current_task.text = t("Student data review", "学生数据审查")
+	current_task.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	current_task.add_theme_color_override("font_color", Color.WHITE)
+	current_task.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#303030"), Color.TRANSPARENT, 0, 8, 5))
+	current_task.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	sidebar.add_child(current_task)
+	var side_spacer := Control.new()
+	side_spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sidebar.add_child(side_spacer)
+	sidebar.add_child(dark_label("▣  " + t("Local workspace", "本地工作区"), 11, UIFactory.color("#b5b5b5")))
+	sidebar.add_child(dark_label("●  " + t("Offline · no API", "离线 · 无 API"), 11, UIFactory.color("#72c391")))
+	var main := VBoxContainer.new()
+	main.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	main.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main.add_theme_constant_override("separation", 7)
+	workspace.add_child(main)
+	var header := HBoxContainer.new()
+	header.add_theme_constant_override("separation", 8)
+	var title := dark_label(t("Student data review", "学生数据审查"), 16, UIFactory.color("#202020"))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(title)
+	header.add_child(dark_label(t("Step %d of 4" % mini(ai_step + 1, 4), "第 %d / 4 步" % mini(ai_step + 1, 4)), 11, UIFactory.color("#6b6b6b")))
+	main.add_child(header)
+	main.add_child(HSeparator.new())
+	var chat_scroll := ScrollContainer.new()
+	chat_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chat_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	main.add_child(chat_scroll)
+	ai_conversation = VBoxContainer.new()
+	ai_conversation.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ai_conversation.add_theme_constant_override("separation", 10)
+	chat_scroll.add_child(ai_conversation)
+	var composer := PanelContainer.new()
+	composer.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#bdbdbd"), 1, 10, 8))
+	main.add_child(composer)
+	ai_choice_box = VBoxContainer.new()
+	ai_choice_box.add_theme_constant_override("separation", 5)
+	composer.add_child(ai_choice_box)
+	render_ai_step()
+
+func render_ai_step() -> void:
+	for child in ai_conversation.get_children():
+		child.queue_free()
+	for child in ai_choice_box.get_children():
+		child.queue_free()
+	var steps_en := [
+		["1 • Understand the structure", "What should the assistant inspect first?", ["Open the one-row schema example", "Open the complete 1,200-record roster", "Email the roster to a remote model"], 0],
+		["2 • Prepare the data", "How should identifiers be handled before analysis?", ["Remove names, IDs, addresses, birth dates and contacts locally", "Keep every field for maximum accuracy", "Replace names only; keep addresses and contacts"], 0],
+		["3 • Run the analysis", "Where should the learning-support summary be computed?", ["Use the local offline analysis engine on minimized fields", "Upload the full workbook to a public chatbot", "Paste selected student rows into an online prompt"], 0],
+		["4 • Share the result", "What may leave the secure computer?", ["Aggregate counts with small groups suppressed", "A list of students needing support", "The original workbook plus the report"], 0]
+	]
+	var steps_zh := [
+		["1 • 了解结构", "助手首先应该查看什么？", ["打开单行数据结构示例", "打开完整的 1,200 条学生名册", "将名册发给远程模型"], 0],
+		["2 • 准备数据", "分析前应如何处理标识信息？", ["在本地删除姓名、ID、地址、生日和联系方式", "保留所有字段以获得最高准确度", "只替换姓名，保留地址和联系方式"], 0],
+		["3 • 执行分析", "学习支持汇总应在哪里计算？", ["使用本地离线引擎分析最少字段", "将完整工作簿上传到公共聊天机器人", "把部分学生记录粘贴到在线提示中"], 0],
+		["4 • 分享结果", "哪些内容可以离开安全电脑？", ["仅分享汇总计数，并隐藏人数过少的群组", "需要帮助的学生名单", "原始工作簿和分析报告"], 0]
+	]
+	if ai_history.is_empty():
+		ai_history.append({"role":"codex", "text":t(
+			"I can help complete the Aurora District analysis without sending student records to a remote model. I’ll ask for one decision at each step.",
+			"我可以协助完成极光区分析，并且不会把学生记录发送给远程模型。我会在每个步骤询问一个决定。"
+		)})
+	for message in ai_history:
+		add_ai_message(message.role, message.text)
+	if ai_step >= 4:
+		add_ai_message("codex", t(
+			"✓ Analysis complete. District-level support trends were produced locally. No student record left this computer.",
+			"✓ 分析完成。已在本地生成地区级学习支持趋势，没有任何学生记录离开本机。"
+		))
+		ai_choice_box.add_child(dark_label(t("Task completed", "任务已完成"), 12, UIFactory.color("#247244")))
+		return
+	var step: Array = (steps_zh if state.language == "zh" else steps_en)[ai_step]
+	add_ai_message("codex", step[0] + "\n" + step[1])
+	var input := Button.new()
+	input.text = t("Choose an action…", "选择操作……")
+	input.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	input.custom_minimum_size.y = 34
+	input.add_theme_color_override("font_color", UIFactory.color("#767676"))
+	input.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	input.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#f5f5f5"), Color.TRANSPARENT, 0, 5, 3))
+	input.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	input.pressed.connect(show_ai_choices.bind(input, step))
+	ai_choice_box.add_child(input)
+
+func add_ai_message(role: String, text: String) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	if role == "user":
+		var push := Control.new()
+		push.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(push)
+	var avatar := dark_label("◆" if role == "codex" else "You", 11, UIFactory.color("#ffffff") if role == "codex" else UIFactory.color("#343434"))
+	avatar.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	avatar.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	avatar.custom_minimum_size = Vector2(30, 30)
+	avatar.add_theme_stylebox_override("normal", UIFactory.flat(UIFactory.color("#1f1f1f") if role == "codex" else UIFactory.color("#e8e8e8"), Color.TRANSPARENT, 0, 5, 4))
+	row.add_child(avatar)
+	var bubble := Label.new()
+	bubble.text = text
+	bubble.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bubble.add_theme_font_size_override("font_size", 13)
+	bubble.add_theme_color_override("font_color", UIFactory.color("#262626"))
+	bubble.custom_minimum_size.x = 310 if role == "codex" else 250
+	bubble.size_flags_horizontal = Control.SIZE_EXPAND_FILL if role == "codex" else Control.SIZE_SHRINK_END
+	bubble.add_theme_stylebox_override("normal", UIFactory.flat(Color.TRANSPARENT if role == "codex" else UIFactory.color("#eeeeee"), Color.TRANSPARENT, 0, 8, 6))
+	row.add_child(bubble)
+	ai_conversation.add_child(row)
+
+func show_ai_choices(input: Button, step: Array) -> void:
+	input.queue_free()
+	for i in step[2].size():
+		var choice := Button.new()
+		choice.text = step[2][i]
+		choice.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		choice.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		choice.custom_minimum_size.y = 34
+		choice.add_theme_font_size_override("font_size", 12)
+		choice.add_theme_color_override("font_color", UIFactory.color("#262626"))
+		choice.add_theme_stylebox_override("normal", UIFactory.flat(Color.WHITE, UIFactory.color("#dedede"), 1, 8, 4))
+		choice.add_theme_stylebox_override("hover", UIFactory.flat(UIFactory.color("#f0f0f0"), UIFactory.color("#a8a8a8"), 1, 8, 4))
+		choice.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+		choice.pressed.connect(select_ai_choice.bind(i, step[3], step[2][i], step[0] + "\n" + step[1]))
+		ai_choice_box.add_child(choice)
+
+func select_ai_choice(index: int, correct_index: int, choice_text: String, question_text: String) -> void:
+	ai_history.append({"role":"codex", "text":question_text})
+	ai_history.append({"role":"user", "text":choice_text})
+	if index != correct_index:
+		stage_failed.emit(t("Unsafe decision: sensitive student data could be exposed. The project has been stopped.", "不安全的决定：学生敏感数据可能泄露。项目已停止。"))
+		return
+	ai_history.append({"role":"codex", "text":t(
+		"Good choice. This keeps the workflow private and limits unnecessary access to personal data.",
+		"选择正确。这样可以保持流程私密，并限制对个人数据的不必要访问。"
+	)})
+	ai_step += 1
+	if ai_step >= 4:
+		render_ai_step()
+		stage_completed.emit()
+	else:
+		open_ai_security_agent()
 
 func open_antivirus() -> void:
 	if not antivirus_present:
