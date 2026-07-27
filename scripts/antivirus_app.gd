@@ -4,6 +4,7 @@ extends Control
 signal protection_changed(firewall_enabled: bool, virus_protection_enabled: bool)
 signal scan_completed
 signal clean_requested
+signal network_attacker_identified(ip: String)
 
 var state: GameState
 var firewall_enabled := true
@@ -13,11 +14,15 @@ var scan_progress: ProgressBar
 var scan_status: Label
 var scan_timer: Timer
 var scan_actions: VBoxContainer
+var stage_data: Dictionary
+var network_feedback: Label
+var selected_network_ip := ""
 
-func setup(game_state: GameState, firewall: bool, virus_protection: bool) -> void:
+func setup(game_state: GameState, firewall: bool, virus_protection: bool, current_stage: Dictionary = {}) -> void:
 	state = game_state
 	firewall_enabled = firewall
 	virus_protection_enabled = virus_protection
+	stage_data = current_stage
 	build_shell()
 
 func t(en: String, zh: String) -> String:
@@ -48,6 +53,10 @@ func build_shell() -> void:
 	var protection_nav := nav_button("▣  " + t("Protection", "防护设置"))
 	protection_nav.pressed.connect(show_protection_page)
 	navigation.add_child(protection_nav)
+	if stage_data.get("id", "") == "network":
+		var firewall_nav := nav_button("≋  " + t("Firewall activity", "防火墙活动"))
+		firewall_nav.pressed.connect(show_firewall_activity)
+		navigation.add_child(firewall_nav)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	navigation.add_child(spacer)
@@ -62,9 +71,17 @@ func build_shell() -> void:
 	content_margin.add_theme_constant_override("margin_top", 18)
 	content_margin.add_theme_constant_override("margin_bottom", 18)
 	workspace.add_child(content_margin)
+	var page_scroll := ScrollContainer.new()
+	page_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	page_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	page_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	page_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	page_scroll.follow_focus = true
+	content_margin.add_child(page_scroll)
 	page_host = VBoxContainer.new()
+	page_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	page_host.add_theme_constant_override("separation", 12)
-	content_margin.add_child(page_host)
+	page_scroll.add_child(page_host)
 	scan_timer = Timer.new()
 	scan_timer.wait_time = 0.12
 	scan_timer.timeout.connect(advance_scan)
@@ -181,6 +198,63 @@ func show_protection_page() -> void:
 		virus_protection_enabled,
 		func(enabled: bool): virus_protection_enabled = enabled; emit_protection_state()
 	)
+
+func show_firewall_activity() -> void:
+	clear_page()
+	page_host.add_child(UIFactory.label(t("Incoming connections", "传入连接"), 22, UIFactory.color("#202020")))
+	var alert := UIFactory.label(t(
+		"Network attack detected. Select the source IP whose behavior indicates an attack.",
+		"检测到网络攻击。请选择行为表明正在发动攻击的来源 IP。"
+	), 12, UIFactory.color("#c42b1c"))
+	alert.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	page_host.add_child(alert)
+	var header := HBoxContainer.new()
+	for value in [t("Time", "时间"), t("Source IP", "来源 IP"), t("Port", "端口"), t("Activity", "活动")]:
+		var label := UIFactory.label(value, 11, UIFactory.color("#555555"))
+		label.custom_minimum_size.x = 78 if header.get_child_count() != 3 else 180
+		header.add_child(label)
+	page_host.add_child(header)
+	var choices := ButtonGroup.new()
+	for record in stage_data.get("network_connections", []):
+		var row := HBoxContainer.new()
+		var radio := CheckBox.new()
+		radio.button_group = choices
+		radio.custom_minimum_size.x = 22
+		radio.toggled.connect(func(on: bool, ip: String = record.ip): if on: selected_network_ip = ip)
+		row.add_child(radio)
+		for value in [record.time, record.ip, record.port, record.get("event_zh" if state.language == "zh" else "event_en", "")]:
+			var cell := UIFactory.label(str(value), 11, UIFactory.color("#282828"))
+			cell.custom_minimum_size.x = 78 if row.get_child_count() != 4 else 180
+			row.add_child(cell)
+		page_host.add_child(row)
+	var actions := HBoxContainer.new()
+	var block := Button.new()
+	block.text = t("Classify and block selected IP", "分类并阻止所选 IP")
+	UIFactory.style_win10_button(block)
+	block.pressed.connect(check_network_selection)
+	actions.add_child(block)
+	network_feedback = UIFactory.label("", 12)
+	network_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	network_feedback.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(network_feedback)
+	page_host.add_child(actions)
+
+func check_network_selection() -> void:
+	if selected_network_ip.is_empty():
+		network_feedback.text = t("Select a connection first.", "请先选择一条连接。")
+		network_feedback.add_theme_color_override("font_color", UIFactory.color("#a15c00"))
+		return
+	if selected_network_ip != str(stage_data.get("attacker_ip", "")):
+		network_feedback.text = t(
+			"That source shows routine traffic. Compare repeated failures, probes, and port sweeps.",
+			"该来源显示的是常规流量。请比较重复失败、探测和端口扫描行为。"
+		)
+		network_feedback.add_theme_color_override("font_color", UIFactory.color("#c42b1c"))
+		return
+	state.session_flags["network_investigation_complete"] = true
+	network_feedback.text = t("Attacker classified and blocked. Report the IP on the mission note.", "攻击者已分类并阻止。请在任务便笺中报告该 IP。")
+	network_feedback.add_theme_color_override("font_color", UIFactory.color("#16833b"))
+	network_attacker_identified.emit(selected_network_ip)
 
 func add_protection_row(title: String, description: String, enabled: bool, callback: Callable) -> void:
 	var card := PanelContainer.new()

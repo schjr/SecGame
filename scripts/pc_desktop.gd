@@ -1388,7 +1388,7 @@ func open_antivirus() -> void:
 	antivirus.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	antivirus.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(antivirus)
-	antivirus.setup(state, firewall_enabled, virus_protection_enabled)
+	antivirus.setup(state, firewall_enabled, virus_protection_enabled, stage)
 	antivirus.protection_changed.connect(on_antivirus_protection_changed)
 	antivirus.scan_completed.connect(on_antivirus_scan_completed.bind(antivirus))
 	antivirus.clean_requested.connect(clean_detected_malware.bind(antivirus))

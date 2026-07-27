@@ -52,10 +52,25 @@ const STAGES := [
 	},
 	{
 		"id":"network",
-		"title_en":"Network Protection",
-		"title_zh":"网络防护",
-		"desc_en":"Stage content will be defined later.",
-		"desc_zh":"关卡内容将在之后定义。",
+		"title_en":"Network Protection: Intrusion Response",
+		"title_zh":"网络防护：入侵响应",
+		"desc_en":"Investigate an antivirus network alert and identify the attacking address.",
+		"desc_zh":"调查防病毒软件的网络警报，并识别攻击来源地址。",
+		"note_en":"Super Security says it detected a network attack!\n\nPlease open its Firewall activity, review the incoming connections, and block the attacking IP. Then write the attacker's IP below so I know which address caused the alert.",
+		"note_zh":"Super Security 报告检测到网络攻击！\n\n请打开其中的“防火墙活动”，检查传入连接，并阻止攻击者的 IP。然后在下面写下攻击者的 IP，让我知道是哪个地址触发了警报。",
+		"antivirus_present":true,
+		"firewall_enabled":true,
+		"virus_protection_enabled":true,
+		"attacker_ip":"203.0.113.77",
+		"network_connections":[
+			{"time":"09:41:02", "ip":"192.0.2.18", "port":"443", "event_en":"Established TLS session", "event_zh":"已建立 TLS 会话", "risk":"safe"},
+			{"time":"09:41:08", "ip":"203.0.113.77", "port":"22", "event_en":"Repeated sign-in failures", "event_zh":"重复登录失败", "risk":"malicious"},
+			{"time":"09:41:15", "ip":"198.51.100.42", "port":"443", "event_en":"Established TLS session", "event_zh":"已建立 TLS 会话", "risk":"safe"},
+			{"time":"09:41:19", "ip":"203.0.113.77", "port":"3389", "event_en":"Blocked credential probe", "event_zh":"已阻止凭据探测", "risk":"malicious"},
+			{"time":"09:41:31", "ip":"192.0.2.64", "port":"123", "event_en":"Time synchronization", "event_zh":"时间同步", "risk":"safe"},
+			{"time":"09:41:36", "ip":"203.0.113.77", "port":"445", "event_en":"Rapid connection sweep", "event_zh":"快速连接扫描", "risk":"malicious"},
+			{"time":"09:41:49", "ip":"198.51.100.91", "port":"993", "event_en":"Mail synchronization", "event_zh":"邮件同步", "risk":"safe"}
+		],
 		"emails":[]
 	},
 	{
@@ -74,6 +89,7 @@ var language := "en"
 var sfx_volume := 0.8
 var music_volume := 0.55
 var completed: Dictionary = {}
+var session_flags: Dictionary = {}
 
 func load_data() -> void:
 	var config := ConfigFile.new()

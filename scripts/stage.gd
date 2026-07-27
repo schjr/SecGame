@@ -14,6 +14,8 @@ func setup(game_state: GameState, stage_data: Dictionary, go_back: Callable) -> 
 	state = game_state
 	stage = stage_data
 	return_callback = go_back
+	if stage.id == "network":
+		state.session_flags.erase("network_investigation_complete")
 	sound_effects = SoundEffects.new()
 	add_child(sound_effects)
 	build()
@@ -182,7 +184,7 @@ func open_note() -> void:
 	close_popup()
 	note_window = PanelContainer.new()
 	note_window.position = Vector2(345, 160)
-	note_window.size = Vector2(590, 360)
+	note_window.size = Vector2(590, 430 if stage.id == "network" else 360)
 	note_window.rotation = -0.012
 	var paper_style := UIFactory.panel(UIFactory.color("#fff4c9"), 3, UIFactory.color("#c8a95f"), 1)
 	paper_style.shadow_color = Color(0, 0, 0, 0.28)
@@ -216,6 +218,25 @@ func open_note() -> void:
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(body)
+	if stage.id == "network":
+		var answer := LineEdit.new()
+		answer.placeholder_text = state.tr_text("Attacker IP address", "攻击者 IP 地址")
+		answer.add_theme_font_override("font", HANDWRITING_FONT)
+		answer.add_theme_font_size_override("font_size", 20)
+		UIFactory.style_win10_lineedit(answer)
+		content.add_child(answer)
+		var response := UIFactory.label("", 16, UIFactory.color("#b42318"))
+		response.add_theme_font_override("font", HANDWRITING_FONT)
+		response.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		content.add_child(response)
+		var submit := Button.new()
+		submit.text = state.tr_text("Write reply", "写下回复")
+		submit.add_theme_font_override("font", HANDWRITING_FONT)
+		submit.add_theme_font_size_override("font_size", 20)
+		UIFactory.style_win10_button(submit)
+		submit.pressed.connect(validate_network_note.bind(answer, response))
+		answer.text_submitted.connect(func(_value: String): validate_network_note(answer, response))
+		content.add_child(submit)
 	var close := Button.new()
 	close.text = "✓  " + state.tr_text("Got it", "明白")
 	close.add_theme_font_override("font", HANDWRITING_FONT)
@@ -228,6 +249,18 @@ func open_note() -> void:
 	close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	close.pressed.connect(close_popup)
 	content.add_child(close)
+
+func validate_network_note(answer: LineEdit, response: Label) -> void:
+	if not state.session_flags.get("network_investigation_complete", false):
+		response.text = state.tr_text(
+			"First classify and block the attacker in Super Security's Firewall activity.",
+			"请先在 Super Security 的“防火墙活动”中分类并阻止攻击者。"
+		)
+		return
+	if answer.text.strip_edges() != str(stage.get("attacker_ip", "")):
+		response.text = state.tr_text("That IP does not match the attacker you blocked. Check the log again.", "该 IP 与你阻止的攻击者不一致。请再次检查日志。")
+		return
+	complete_stage()
 
 func complete_stage() -> void:
 	sound_effects.play_success()
