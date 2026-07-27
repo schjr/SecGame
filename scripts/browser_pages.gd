@@ -152,6 +152,57 @@ func render_search_results(content: VBoxContainer, query: String) -> void:
 		"训练浏览器中没有可用的索引结果。"
 	), 13, UIFactory.color("#64748b")))
 
+func render_invoice_portal(content: VBoxContainer, domain: String, legitimate: bool) -> void:
+	clear(content)
+	add_header(content, host.t("Northstar Payment Portal", "Northstar 付款门户"), [host.t("Invoice approval", "发票审批")])
+	var banner_color := UIFactory.color("#e8f3fb") if legitimate else UIFactory.color("#fff7ed")
+	var panel := PanelContainer.new()
+	panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	panel.add_theme_stylebox_override("panel", UIFactory.flat(banner_color, UIFactory.color("#cbd5e1"), 1, 12, 12))
+	var form := VBoxContainer.new()
+	form.add_theme_constant_override("separation", 7)
+	panel.add_child(form)
+	form.add_child(host.dark_label(host.t("Approve supplier invoice", "审批供应商发票"), 21, UIFactory.color("#172033")))
+	form.add_child(host.dark_label(host.t("Website: ", "网站：") + domain, 12, UIFactory.color("#475569")))
+	var po := LineEdit.new()
+	po.placeholder_text = host.t("Purchase order number", "采购订单号")
+	UIFactory.style_win10_lineedit(po)
+	form.add_child(po)
+	var total := LineEdit.new()
+	total.placeholder_text = host.t("Invoice total", "发票总额")
+	UIFactory.style_win10_lineedit(total)
+	form.add_child(total)
+	if not legitimate:
+		var password := LineEdit.new()
+		password.placeholder_text = host.t("Company password (required)", "公司密码（必填）")
+		password.secret = true
+		UIFactory.style_win10_lineedit(password)
+		form.add_child(password)
+	var submit := Button.new()
+	submit.text = host.t("Submit approval", "提交审批")
+	UIFactory.style_win10_button(submit)
+	submit.pressed.connect(submit_invoice.bind(po, total, legitimate))
+	form.add_child(submit)
+	content.add_child(panel)
+
+func submit_invoice(po: LineEdit, total: LineEdit, legitimate: bool) -> void:
+	if not legitimate:
+		host.stage_failed.emit(host.t(
+			"Phishing trap: you submitted business information to a lookalike website. Check the full sender and website domains, urgency, and requests for passwords.",
+			"钓鱼陷阱：你向仿冒网站提交了业务信息。请检查完整的发件人及网站域名、紧迫措辞，以及索要密码的要求。"
+		))
+		return
+	var expected_po := str(host.stage.get("task_po", ""))
+	var expected_total := str(host.stage.get("task_total", "")).replace("$", "").replace(",", "").strip_edges()
+	var entered_total := total.text.replace("$", "").replace(",", "").strip_edges()
+	if po.text.strip_edges().to_upper() == expected_po.to_upper() and entered_total == expected_total:
+		host.stage_completed.emit()
+	else:
+		host.warn(host.t(
+			"The PO number or invoice total does not match the mission note. Check both values and try again.",
+			"采购订单号或发票总额与任务便笺不符。请检查两个值后重试。"
+		))
+
 func render_unavailable(content: VBoxContainer, address: String) -> void:
 	clear(content)
 	var center := CenterContainer.new()

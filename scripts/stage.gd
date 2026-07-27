@@ -209,7 +209,8 @@ func open_note() -> void:
 		"note_zh" if state.language == "zh" else "note_en",
 		state.stage_desc(stage)
 	)
-	var body := UIFactory.label(note_text, 23, UIFactory.color("#324b70"))
+	var note_font_size := 18 if note_text.length() > 300 else 23
+	var body := UIFactory.label(note_text, note_font_size, UIFactory.color("#324b70"))
 	body.add_theme_font_override("font", HANDWRITING_FONT)
 	body.add_theme_constant_override("line_spacing", 10)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

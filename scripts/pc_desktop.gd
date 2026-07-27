@@ -40,6 +40,7 @@ var process_manager := ProcessManager.new()
 var processes: Dictionary = process_manager.processes
 var deleted_items: Array[Dictionary] = []
 var deleted_mail: Dictionary = {}
+var read_mail_status: Dictionary = {}
 var app_buttons: Dictionary = {}
 var reported: Dictionary = {}
 var clock_label: Label
@@ -70,6 +71,7 @@ var email_app: DesktopEmailApp
 func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	state = game_state
 	stage = stage_data
+	configure_desktop_font()
 	browser_pages = BrowserPages.new(self)
 	window_manager = DesktopWindowManager.new(self)
 	ai_security_app = AISecurityApp.new(self)
@@ -83,6 +85,24 @@ func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	configure_antivirus_installer()
 	configure_ai_security_stage()
 	build_desktop()
+
+func configure_desktop_font() -> void:
+	# Use a full system CJK font for application controls. Godot's default
+	# fallback can select a partial glyph set, which renders some Chinese
+	# characters as boxes even when neighboring characters display correctly.
+	var system_cjk_font := SystemFont.new()
+	system_cjk_font.font_names = PackedStringArray([
+		"PingFang SC",
+		"Hiragino Sans GB",
+		"Noto Sans CJK SC",
+		"Microsoft YaHei",
+		"WenQuanYi Micro Hei",
+		"Arial Unicode MS"
+	])
+	system_cjk_font.fallbacks = [CJK_UI_FONT]
+	var desktop_theme := Theme.new()
+	desktop_theme.default_font = system_cjk_font
+	theme = desktop_theme
 
 func t(en: String, zh: String) -> String:
 	return state.tr_text(en, zh)
@@ -1219,6 +1239,15 @@ func navigate_browser(value: String) -> void:
 	elif normalized == "www.supersearch.test":
 		address.text = SUPER_SEARCH_ADDRESS
 		browser_pages.render_search_home(web_content)
+	elif stage.id == "spam" and normalized in [
+		"pay.northstar.example",
+		"pay.northstar-payments.example",
+		"pay.northstarr.example",
+		"northstar.example.security-check.example",
+		"northstar-internal.example"
+	]:
+		address.text = "https://" + normalized
+		browser_pages.render_invoice_portal(web_content, normalized, normalized == stage.get("legitimate_portal", ""))
 	elif "." not in normalized:
 		address.text = SUPER_SEARCH_ADDRESS + "/search?q=" + value.strip_edges().replace(" ", "+")
 		browser_pages.render_search_results(web_content, value.strip_edges())
