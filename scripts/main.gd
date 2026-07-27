@@ -2,6 +2,7 @@ extends Control
 
 var state := GameState.new()
 var page: Control
+var background_music: BackgroundMusic
 
 func _ready() -> void:
 	# Keep the 1280x720 design coordinate system, but render controls directly
@@ -10,6 +11,9 @@ func _ready() -> void:
 	get_tree().root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
 	get_tree().root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
 	state.load_data()
+	background_music = BackgroundMusic.new()
+	add_child(background_music)
+	background_music.set_enabled(true)
 	show_main_menu()
 
 func clear_page() -> void:
@@ -86,7 +90,7 @@ func show_settings() -> void:
 	card.add_theme_stylebox_override("panel", UIFactory.panel(UIFactory.color("#151f31")))
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", UIFactory.panel(UIFactory.color("#151f31")))
-	panel.custom_minimum_size = Vector2(620, 330)
+	panel.custom_minimum_size = Vector2(620, 390)
 	panel.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	panel.add_child(card)
 	root.add_child(panel)
@@ -103,24 +107,42 @@ func show_settings() -> void:
 		show_settings()
 	)
 	card.add_child(language)
-	card.add_child(UIFactory.label(state.tr_text("Sound volume", "音量"), 20))
-	var volume_row := HBoxContainer.new()
-	var slider := HSlider.new()
-	slider.min_value = 0
-	slider.max_value = 100
-	slider.value = state.volume * 100
-	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var value_label := UIFactory.label("%d%%" % int(slider.value), 18, UIFactory.color("#93c5fd"))
-	value_label.custom_minimum_size.x = 60
-	slider.value_changed.connect(func(value: float):
-		state.volume = value / 100.0
-		value_label.text = "%d%%" % int(value)
-		state.apply_volume()
+	card.add_child(UIFactory.label(state.tr_text("Sound effects volume", "音效音量"), 20))
+	var sfx_volume_row := HBoxContainer.new()
+	var sfx_slider := HSlider.new()
+	sfx_slider.min_value = 0
+	sfx_slider.max_value = 100
+	sfx_slider.value = state.sfx_volume * 100
+	sfx_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var sfx_value_label := UIFactory.label("%d%%" % int(sfx_slider.value), 18, UIFactory.color("#93c5fd"))
+	sfx_value_label.custom_minimum_size.x = 60
+	sfx_slider.value_changed.connect(func(value: float):
+		state.sfx_volume = value / 100.0
+		sfx_value_label.text = "%d%%" % int(value)
+		state.apply_audio_volumes()
 		state.save_data()
 	)
-	volume_row.add_child(slider)
-	volume_row.add_child(value_label)
-	card.add_child(volume_row)
+	sfx_volume_row.add_child(sfx_slider)
+	sfx_volume_row.add_child(sfx_value_label)
+	card.add_child(sfx_volume_row)
+	card.add_child(UIFactory.label(state.tr_text("Background music volume", "背景音乐音量"), 20))
+	var music_volume_row := HBoxContainer.new()
+	var music_slider := HSlider.new()
+	music_slider.min_value = 0
+	music_slider.max_value = 100
+	music_slider.value = state.music_volume * 100
+	music_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var music_value_label := UIFactory.label("%d%%" % int(music_slider.value), 18, UIFactory.color("#93c5fd"))
+	music_value_label.custom_minimum_size.x = 60
+	music_slider.value_changed.connect(func(value: float):
+		state.music_volume = value / 100.0
+		music_value_label.text = "%d%%" % int(value)
+		state.apply_audio_volumes()
+		state.save_data()
+	)
+	music_volume_row.add_child(music_slider)
+	music_volume_row.add_child(music_value_label)
+	card.add_child(music_volume_row)
 
 func show_stage_select() -> void:
 	clear_page()

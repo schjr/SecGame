@@ -1,16 +1,21 @@
 extends Control
 
+const HANDWRITING_FONT: Font = preload("res://assets/fonts/LXGWWenKaiLite-Regular.ttf")
+
 var state: GameState
 var stage: Dictionary
 var return_callback: Callable
 var pc_window: PanelContainer
 var note_window: PanelContainer
 var reported: Dictionary = {}
+var sound_effects: SoundEffects
 
 func setup(game_state: GameState, stage_data: Dictionary, go_back: Callable) -> void:
 	state = game_state
 	stage = stage_data
 	return_callback = go_back
+	sound_effects = SoundEffects.new()
+	add_child(sound_effects)
 	build()
 
 func build() -> void:
@@ -54,6 +59,7 @@ func make_monitor() -> void:
 	var pc: PCDesktop = load("res://scenes/pc_desktop.tscn").instantiate()
 	pc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	monitor.add_child(pc)
+	pc.sound_effects = sound_effects
 	pc.setup(state, stage)
 	pc.stage_completed.connect(complete_stage)
 	pc.stage_failed.connect(fail_stage)
@@ -79,8 +85,10 @@ func make_note() -> void:
 	note.position = Vector2(995, 180)
 	note.size = Vector2(210, 230)
 	note.rotation = 0.04
-	note.add_theme_font_size_override("font_size", 20)
-	note.add_theme_color_override("font_color", UIFactory.color("#422006"))
+	note.add_theme_font_override("font", HANDWRITING_FONT)
+	note.add_theme_font_size_override("font_size", 24)
+	note.add_theme_color_override("font_color", UIFactory.color("#51320f"))
+	note.add_theme_color_override("font_hover_color", UIFactory.color("#382109"))
 	note.add_theme_stylebox_override("normal", UIFactory.panel(UIFactory.color("#fde68a"), 4))
 	note.add_theme_stylebox_override("hover", UIFactory.panel(UIFactory.color("#fef3c7"), 4))
 	note.pressed.connect(open_note)
@@ -170,26 +178,58 @@ func open_files() -> void:
 		root.add_child(clean)
 
 func open_note() -> void:
+	sound_effects.play_paper()
 	close_popup()
 	note_window = PanelContainer.new()
 	note_window.position = Vector2(345, 160)
 	note_window.size = Vector2(590, 360)
-	note_window.add_theme_stylebox_override("panel", UIFactory.panel(UIFactory.color("#fef3c7"), 5))
+	note_window.rotation = -0.012
+	var paper_style := UIFactory.panel(UIFactory.color("#fff4c9"), 3, UIFactory.color("#c8a95f"), 1)
+	paper_style.shadow_color = Color(0, 0, 0, 0.28)
+	paper_style.shadow_size = 12
+	paper_style.shadow_offset = Vector2(7, 9)
+	note_window.add_theme_stylebox_override("panel", paper_style)
 	add_child(note_window)
+	var paper := NotePaper.new()
+	paper.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	note_window.add_child(paper)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 76)
+	margin.add_theme_constant_override("margin_right", 30)
+	margin.add_theme_constant_override("margin_top", 24)
+	margin.add_theme_constant_override("margin_bottom", 20)
+	note_window.add_child(margin)
 	var content := VBoxContainer.new()
-	note_window.add_child(content)
-	content.add_child(UIFactory.label(state.tr_text("Mission Note", "任务便笺"), 26, UIFactory.color("#422006")))
-	var body := UIFactory.label(state.stage_desc(stage), 20, UIFactory.color("#713f12"))
+	content.add_theme_constant_override("separation", 10)
+	margin.add_child(content)
+	var heading := UIFactory.label(state.tr_text("Mission Note", "任务便笺"), 30, UIFactory.color("#3f2b18"))
+	heading.add_theme_font_override("font", HANDWRITING_FONT)
+	content.add_child(heading)
+	var note_text: String = stage.get(
+		"note_zh" if state.language == "zh" else "note_en",
+		state.stage_desc(stage)
+	)
+	var body := UIFactory.label(note_text, 23, UIFactory.color("#324b70"))
+	body.add_theme_font_override("font", HANDWRITING_FONT)
+	body.add_theme_constant_override("line_spacing", 10)
 	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(body)
 	var close := Button.new()
-	close.text = state.tr_text("Got it", "明白")
-	UIFactory.style_button(close, true)
+	close.text = "✓  " + state.tr_text("Got it", "明白")
+	close.add_theme_font_override("font", HANDWRITING_FONT)
+	close.add_theme_font_size_override("font_size", 22)
+	close.add_theme_color_override("font_color", UIFactory.color("#51320f"))
+	close.add_theme_color_override("font_hover_color", UIFactory.color("#1f4f85"))
+	close.add_theme_stylebox_override("normal", StyleBoxEmpty.new())
+	close.add_theme_stylebox_override("hover", UIFactory.flat(Color(0.33, 0.49, 0.65, 0.10), Color.TRANSPARENT, 0, 6, 3))
+	close.add_theme_stylebox_override("pressed", UIFactory.flat(Color(0.33, 0.49, 0.65, 0.18), Color.TRANSPARENT, 0, 6, 3))
+	close.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
 	close.pressed.connect(close_popup)
 	content.add_child(close)
 
 func complete_stage() -> void:
+	sound_effects.play_success()
 	state.completed[stage.id] = true
 	state.save_data()
 	close_popup()
@@ -201,6 +241,7 @@ func complete_stage() -> void:
 	dialog.popup_centered()
 
 func fail_stage(message: String) -> void:
+	sound_effects.play_failure()
 	var dialog := AcceptDialog.new()
 	dialog.title = state.tr_text("Stage failed", "关卡失败")
 	dialog.dialog_text = message

@@ -53,6 +53,7 @@ var virtual_fs := VirtualFileSystem.new()
 var fs_items: Dictionary = virtual_fs.items
 var browser_pages: BrowserPages
 var window_manager: DesktopWindowManager
+var sound_effects: SoundEffects
 
 func setup(game_state: GameState, stage_data: Dictionary) -> void:
 	state = game_state
@@ -70,6 +71,18 @@ func setup(game_state: GameState, stage_data: Dictionary) -> void:
 
 func t(en: String, zh: String) -> String:
 	return state.tr_text(en, zh)
+
+func _input(event: InputEvent) -> void:
+	if sound_effects == null:
+		return
+	if (
+		event is InputEventMouseButton
+		and event.pressed
+		and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]
+	):
+		var hovered := get_viewport().gui_get_hovered_control()
+		if hovered != null and (hovered == self or is_ancestor_of(hovered)):
+			sound_effects.play_click()
 
 func ensure_virtual_folder(parent_path: String, folder_path: String, folder_name: String) -> void:
 	virtual_fs.ensure_folder(parent_path, folder_path, folder_name)
@@ -1000,7 +1013,7 @@ func install_antivirus() -> void:
 	warn(t(
 		"Super Security was installed successfully.",
 		"Super Security 已成功安装。"
-	))
+	), false)
 
 func open_email() -> void:
 	var root := create_window("email", t("SecMail", "安全邮箱"), Vector2(710, 400))
@@ -1229,7 +1242,7 @@ func download_antivirus_installer() -> void:
 	warn(t(
 		"SuperSecuritySetup.exe was downloaded to the desktop.",
 		"SuperSecuritySetup.exe 已下载到桌面。"
-	))
+	), false)
 
 func open_agent() -> void:
 	var root := create_window("agent", t("SillyAgent", "智慧助手"), Vector2(650, 390))
@@ -1601,7 +1614,7 @@ func open_process_file_location(pid: int) -> void:
 	if fs_items.has(parent):
 		open_my_pc(parent)
 	else:
-		warn(t("Process path:\n", "进程路径：\n") + path)
+		warn(t("Process path:\n", "进程路径：\n") + path, false)
 
 func show_process_path(pid: int) -> void:
 	if not processes.has(pid):
@@ -1609,7 +1622,7 @@ func show_process_path(pid: int) -> void:
 	if not processes[pid].path_visible:
 		warn(t("Access denied. The process path is protected.", "访问被拒绝。该进程路径受保护。"))
 	else:
-		warn(t("Process path:\n", "进程路径：\n") + processes[pid].path)
+		warn(t("Process path:\n", "进程路径：\n") + processes[pid].path, false)
 
 func kill_process(pid: int) -> void:
 	if not processes.has(pid):
@@ -1630,7 +1643,9 @@ func kill_process(pid: int) -> void:
 	if restart_malware and fs_items.has(MALWARE_PATH) and is_instance_valid(malware_restart_timer):
 		malware_restart_timer.start()
 
-func warn(message: String) -> void:
+func warn(message: String, play_error_sound := true) -> void:
+	if play_error_sound and sound_effects != null:
+		sound_effects.play_error()
 	var dialog := AcceptDialog.new()
 	dialog.title = t("Notice", "提示")
 	dialog.dialog_text = message
