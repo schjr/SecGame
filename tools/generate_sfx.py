@@ -137,6 +137,23 @@ def stage_failure() -> list[float]:
     return samples
 
 
+def stage_enter() -> list[float]:
+    """A short, restrained rising cue for opening a training stage."""
+    duration = 0.72
+    notes = [
+        (0.00, 0.32, 392.00, 0.24),
+        (0.10, 0.38, 523.25, 0.27),
+        (0.22, 0.46, 659.25, 0.30),
+    ]
+    samples: list[float] = []
+    for index in range(int(SAMPLE_RATE * duration)):
+        time = index / SAMPLE_RATE
+        tone = sum(harmonic_tone(time, *note) for note in notes)
+        soft_body = harmonic_tone(time, 0.0, 0.60, 196.00, 0.08)
+        samples.append(tone + soft_body)
+    return samples
+
+
 def background_music() -> list[float]:
     """A calm 32-second ambient loop with soft synth pads and light pulses."""
     duration = 32.0
@@ -211,6 +228,7 @@ def main() -> None:
         "error_alert.wav": error_alert(),
         "stage_success.wav": stage_success(),
         "stage_failure.wav": stage_failure(),
+        "stage_enter.wav": stage_enter(),
         "background_loop.wav": background_music(),
     }
     for name, samples in sounds.items():

@@ -69,6 +69,23 @@ func render_super_secure(content: VBoxContainer) -> void:
 	UIFactory.style_win10_button(download)
 	download.pressed.connect(host.download_antivirus_installer)
 	copy.add_child(download)
+	if host.stage.id == "antivirus":
+		var recovery_note: Label = host.dark_label(host.t(
+			"Already installed but unable to open? Use our portable Emergency Kit to repair a compromised installation.",
+			"已经安装但无法打开？请使用便携式急救箱修复被破坏的安装。"
+		), 12, UIFactory.color("#475569"))
+		recovery_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		copy.add_child(recovery_note)
+		var emergency_download := Button.new()
+		emergency_download.name = "EmergencyKitDownload"
+		emergency_download.text = host.t(
+			"Download Emergency Kit (.zip)",
+			"下载急救箱（.zip）"
+		)
+		emergency_download.custom_minimum_size.x = 205
+		UIFactory.style_win10_button(emergency_download)
+		emergency_download.pressed.connect(host.download_emergency_kit)
+		copy.add_child(emergency_download)
 	hero_row.add_child(copy)
 	content.add_child(hero)
 	var features := HBoxContainer.new()

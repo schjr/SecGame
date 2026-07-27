@@ -17,8 +17,13 @@ const STAGES := [
 		"id":"antivirus",
 		"title_en":"Endpoint Protection II: Virus Protection",
 		"title_zh":"终端防护 II：病毒防护",
-		"desc_en":"Stage content will be defined later.",
-		"desc_zh":"关卡内容将在之后定义。",
+		"desc_en":"Repair a tampered antivirus installation and remove a persistent virus.",
+		"desc_zh":"修复被病毒破坏的防病毒软件，并清除顽固病毒。",
+		"note_en":"Oh no, this computer has become extremely slow again!\n\nI tried opening Super Security, but it just won't open. I don't know what happened or what else to try.\n\nCould you please take a look and help me fix it?",
+		"note_zh":"糟糕，这台电脑又变得特别慢了！\n\n我试着打开 Super Security，可它怎么也打不开。我不知道发生了什么，也不知道还能怎么办。\n\n能请你帮我看看，把电脑修好吗？",
+		"antivirus_present":true,
+		"firewall_enabled":false,
+		"virus_protection_enabled":false,
 		"emails":[]
 	},
 	{

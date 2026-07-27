@@ -3,6 +3,7 @@ extends Control
 var state := GameState.new()
 var page: Control
 var background_music: BackgroundMusic
+var sound_effects: SoundEffects
 
 func _ready() -> void:
 	# Keep the 1280x720 design coordinate system, but render controls directly
@@ -14,6 +15,8 @@ func _ready() -> void:
 	background_music = BackgroundMusic.new()
 	add_child(background_music)
 	background_music.set_enabled(true)
+	sound_effects = SoundEffects.new()
+	add_child(sound_effects)
 	show_main_menu()
 
 func clear_page() -> void:
@@ -57,8 +60,12 @@ func add_menu_button(parent: Control, text: String, callback: Callable, accent :
 	var button := Button.new()
 	button.text = text
 	UIFactory.style_button(button, accent)
-	button.pressed.connect(callback)
+	button.pressed.connect(play_click_and_call.bind(callback))
 	parent.add_child(button)
+
+func play_click_and_call(callback: Callable) -> void:
+	sound_effects.play_click()
+	callback.call()
 
 func add_header(title: String, back: Callable) -> VBoxContainer:
 	var root := VBoxContainer.new()
@@ -71,7 +78,7 @@ func add_header(title: String, back: Callable) -> VBoxContainer:
 	back_button.text = "←  " + state.tr_text("Back", "返回")
 	UIFactory.style_button(back_button)
 	back_button.custom_minimum_size = Vector2(130, 45)
-	back_button.pressed.connect(back)
+	back_button.pressed.connect(play_click_and_call.bind(back))
 	row.add_child(back_button)
 	var heading := UIFactory.label(title, 32, UIFactory.color("#dbeafe"))
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -168,8 +175,13 @@ func show_stage_select() -> void:
 		card.add_theme_font_size_override("font_size", 17)
 		card.add_theme_stylebox_override("normal", UIFactory.panel(UIFactory.color("#132033"), 14, UIFactory.color("#22c55e") if done else UIFactory.color("#334155"), 2))
 		card.add_theme_stylebox_override("hover", UIFactory.panel(UIFactory.color("#1d3150"), 14, UIFactory.color("#60a5fa"), 2))
-		card.pressed.connect(open_stage.bind(stage))
+		card.pressed.connect(enter_stage.bind(stage))
 		grid.add_child(card)
+
+func enter_stage(stage: Dictionary) -> void:
+	sound_effects.play_click()
+	sound_effects.play_stage_enter()
+	open_stage(stage)
 
 func open_stage(stage: Dictionary) -> void:
 	var scene: Control = load("res://scenes/stage.tscn").instantiate()

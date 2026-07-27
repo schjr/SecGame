@@ -8,6 +8,9 @@ const TASKBAR_H := 40.0
 const ICON_DIR := "res://assets/icons/"
 const MALWARE_PATH := "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache\\UpdateService\\host_service.exe"
 const MALWARE_FOLDER := "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache\\UpdateService"
+const EMERGENCY_ARCHIVE_PATH := "C:\\Profiles\\User\\Desktop\\SuperSecurity_EmergencyKit.zip"
+const EMERGENCY_FOLDER_PATH := "C:\\Profiles\\User\\Desktop\\SuperSecurity Emergency Kit"
+const EMERGENCY_EXE_PATH := "C:\\Profiles\\User\\Desktop\\SuperSecurity Emergency Kit\\EmergencyKit.exe"
 const SUPER_SECURE_ADDRESS := "https://www.supersecure.test"
 const DAILY_NEWS_ADDRESS := "https://news.supersearch.test"
 const LEARNING_ADDRESS := "https://learn.supersearch.test"
@@ -47,6 +50,12 @@ var antivirus_installer_present := false
 var antivirus_installer_path := "C:\\Profiles\\User\\Desktop\\SuperSecuritySetup.exe"
 var malware_restart_timer: Timer
 var installer_desktop_button: Button
+var emergency_archive_button: Button
+var emergency_folder_button: Button
+var emergency_scan_timer: Timer
+var emergency_scan_progress: ProgressBar
+var emergency_scan_status: Label
+var emergency_actions: VBoxContainer
 var process_context_menu: PopupMenu
 var context_process_pid := -1
 var virtual_fs := VirtualFileSystem.new()
@@ -88,8 +97,9 @@ func ensure_virtual_folder(parent_path: String, folder_path: String, folder_name
 	virtual_fs.ensure_folder(parent_path, folder_path, folder_name)
 
 func configure_malware_stage() -> void:
-	if stage.id != "malware":
+	if stage.id not in ["malware", "antivirus"]:
 		return
+	ensure_virtual_folder("C:\\Profiles\\User", "C:\\Profiles\\User\\Desktop", "Desktop")
 	ensure_virtual_folder("C:\\Profiles\\User", "C:\\Profiles\\User\\AppData", "AppData")
 	ensure_virtual_folder("C:\\Profiles\\User\\AppData", "C:\\Profiles\\User\\AppData\\Roaming", "Roaming")
 	ensure_virtual_folder("C:\\Profiles\\User\\AppData\\Roaming", "C:\\Profiles\\User\\AppData\\Roaming\\SystemCache", "SystemCache")
@@ -99,7 +109,7 @@ func configure_malware_stage() -> void:
 		"type": "Executable",
 		"kind": "executable",
 		"path": MALWARE_PATH,
-		"deletable": true,
+		"deletable": stage.id == "malware",
 		"malware": true
 	}
 	if MALWARE_PATH not in fs_items[MALWARE_FOLDER]["children"]:
@@ -129,7 +139,7 @@ func configure_antivirus_installer() -> void:
 		fs_items[downloads_path]["children"].append(antivirus_installer_path)
 
 func start_stage_processes() -> void:
-	if stage.id != "malware" or not fs_items.has(MALWARE_PATH):
+	if stage.id not in ["malware", "antivirus"] or not fs_items.has(MALWARE_PATH):
 		return
 	start_process("Host Update Service", MALWARE_PATH, true, true, 88.0)
 	for pid in processes:
@@ -253,12 +263,15 @@ func file_icon_name(item: Dictionary) -> String:
 func desktop_icon(icon_name: String, caption: String, pos: Vector2) -> Button:
 	var b := Button.new()
 	b.text = caption
+	b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	b.clip_text = true
 	b.icon = icon_texture(icon_name)
 	b.expand_icon = true
 	b.add_theme_constant_override("icon_max_width", 44)
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.vertical_icon_alignment = VERTICAL_ALIGNMENT_TOP
 	b.position = pos
+	b.custom_minimum_size = Vector2(100, 86)
 	b.size = Vector2(100, 86)
 	b.add_theme_font_size_override("font_size", 13)
 	b.add_theme_color_override("font_color", Color.WHITE)
@@ -281,6 +294,26 @@ func add_antivirus_desktop_icon() -> void:
 	if is_instance_valid(window_layer):
 		desktop.move_child(icon, window_layer.get_index())
 	app_buttons["antivirus"] = icon
+
+func add_emergency_archive_desktop_icon() -> void:
+	if is_instance_valid(emergency_archive_button):
+		return
+	emergency_archive_button = desktop_icon(
+		"folder", t("Emergency Kit.zip", "急救箱.zip"), Vector2(228, 18)
+	)
+	emergency_archive_button.gui_input.connect(on_file_input.bind(EMERGENCY_ARCHIVE_PATH))
+	desktop.add_child(emergency_archive_button)
+	desktop.move_child(emergency_archive_button, window_layer.get_index())
+
+func add_emergency_folder_desktop_icon() -> void:
+	if is_instance_valid(emergency_folder_button):
+		return
+	emergency_folder_button = desktop_icon(
+		"folder", t("Emergency Kit", "急救箱"), Vector2(228, 106)
+	)
+	emergency_folder_button.gui_input.connect(on_file_input.bind(EMERGENCY_FOLDER_PATH))
+	desktop.add_child(emergency_folder_button)
+	desktop.move_child(emergency_folder_button, window_layer.get_index())
 
 func add_installer_desktop_icon() -> void:
 	if is_instance_valid(installer_desktop_button):
@@ -353,7 +386,7 @@ func make_taskbar() -> void:
 	system_tray.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_child(system_tray)
 	system_tray.add_child(UIFactory.label("▲", 9, Color.WHITE))
-	if antivirus_present:
+	if antivirus_present and stage.id != "antivirus":
 		ensure_antivirus_tray_icon()
 	system_tray.add_child(UIFactory.label("Wi-Fi", 11, Color.WHITE))
 	system_tray.add_child(UIFactory.label("🔊", 11, Color.WHITE))
@@ -967,6 +1000,12 @@ func open_file_item(path: String) -> void:
 	if item.get("installer_id", "") == "antivirus":
 		open_antivirus_installer()
 		return
+	if item.get("archive_id", "") == "emergency_kit":
+		extract_emergency_kit()
+		return
+	if item.get("emergency_executable", false):
+		open_emergency_kit()
+		return
 	if item.kind in ["disk", "folder"]:
 		open_my_pc(path)
 	elif item.kind == "photo":
@@ -985,7 +1024,10 @@ func open_file_item(path: String) -> void:
 		root.add_child(content)
 func open_antivirus_installer() -> void:
 	if antivirus_present:
-		warn(t("Super Security is already installed.", "Super Security 已经安装。"))
+		warn(t(
+			"Super Security is already installed. Setup cannot install a second copy.",
+			"Super Security 已经安装。安装程序无法重复安装。"
+		))
 		return
 	var dialog := ConfirmationDialog.new()
 	dialog.title = t("User Account Control", "用户账户控制")
@@ -1244,6 +1286,46 @@ func download_antivirus_installer() -> void:
 		"SuperSecuritySetup.exe 已下载到桌面。"
 	), false)
 
+func download_emergency_kit() -> void:
+	if fs_items.has(EMERGENCY_ARCHIVE_PATH):
+		warn(t("The Emergency Kit is already on the desktop.", "急救箱已在桌面上。"))
+		return
+	fs_items[EMERGENCY_ARCHIVE_PATH] = {
+		"name":"SuperSecurity_EmergencyKit.zip",
+		"type":"Compressed (zipped) Folder",
+		"kind":"archive",
+		"path":EMERGENCY_ARCHIVE_PATH,
+		"deletable":true,
+		"archive_id":"emergency_kit"
+	}
+	fs_items["C:\\Profiles\\User\\Desktop"]["children"].append(EMERGENCY_ARCHIVE_PATH)
+	add_emergency_archive_desktop_icon()
+	warn(t(
+		"SuperSecurity_EmergencyKit.zip was downloaded to the desktop. Open it to extract the recovery tool.",
+		"SuperSecurity_EmergencyKit.zip 已下载到桌面。请打开并解压修复工具。"
+	), false)
+
+func extract_emergency_kit() -> void:
+	if fs_items.has(EMERGENCY_FOLDER_PATH):
+		open_my_pc(EMERGENCY_FOLDER_PATH)
+		return
+	ensure_virtual_folder("C:\\Profiles\\User\\Desktop", EMERGENCY_FOLDER_PATH, "SuperSecurity Emergency Kit")
+	fs_items[EMERGENCY_EXE_PATH] = {
+		"name":"EmergencyKit.exe",
+		"type":"Application",
+		"kind":"executable",
+		"path":EMERGENCY_EXE_PATH,
+		"deletable":true,
+		"emergency_executable":true
+	}
+	fs_items[EMERGENCY_FOLDER_PATH]["children"].append(EMERGENCY_EXE_PATH)
+	add_emergency_folder_desktop_icon()
+	warn(t(
+		"The archive was extracted to the “SuperSecurity Emergency Kit” folder on the desktop.",
+		"压缩包已解压到桌面的“SuperSecurity 急救箱”文件夹。"
+	), false)
+	open_my_pc(EMERGENCY_FOLDER_PATH)
+
 func open_agent() -> void:
 	var root := create_window("agent", t("SillyAgent", "智慧助手"), Vector2(650, 390))
 	var workspace := HBoxContainer.new()
@@ -1296,6 +1378,12 @@ func open_agent() -> void:
 func open_antivirus() -> void:
 	if not antivirus_present:
 		return
+	if stage.id == "antivirus":
+		warn(t(
+			"This app has been blocked by your system administrator.\n\nA policy prevents Super Security from opening.",
+			"此应用已被系统管理员阻止。\n\n系统策略禁止打开 Super Security。"
+		))
+		return
 	if open_windows.has("antivirus") and is_instance_valid(open_windows["antivirus"]):
 		restore_window("antivirus")
 		return
@@ -1308,6 +1396,100 @@ func open_antivirus() -> void:
 	antivirus.protection_changed.connect(on_antivirus_protection_changed)
 	antivirus.scan_completed.connect(on_antivirus_scan_completed.bind(antivirus))
 	antivirus.clean_requested.connect(clean_detected_malware.bind(antivirus))
+
+func open_emergency_kit() -> void:
+	if open_windows.has("emergency_kit") and is_instance_valid(open_windows["emergency_kit"]):
+		restore_window("emergency_kit")
+		return
+	var root := create_window(
+		"emergency_kit", t("Super Security Emergency Kit", "Super Security 急救箱"),
+		Vector2(690, 410), false
+	)
+	root.add_child(dark_label(t("Emergency malware recovery", "紧急恶意软件修复"), 22, UIFactory.color("#202020")))
+	root.add_child(dark_label(t(
+		"This portable tool can run even when the installed antivirus has been disabled or tampered with.",
+		"当已安装的防病毒软件被禁用或破坏时，此便携工具仍可运行。"
+	), 13, UIFactory.color("#666666")))
+	var card := PanelContainer.new()
+	card.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	card.add_theme_stylebox_override("panel", UIFactory.flat(Color.WHITE, UIFactory.color("#d6d6d6"), 1, 22, 18))
+	root.add_child(card)
+	var content := VBoxContainer.new()
+	content.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_theme_constant_override("separation", 14)
+	card.add_child(content)
+	content.add_child(app_icon_rect("antivirus_good", 66))
+	emergency_scan_status = dark_label(t("Emergency Kit is ready", "急救箱已就绪"), 18)
+	emergency_scan_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(emergency_scan_status)
+	emergency_scan_progress = ProgressBar.new()
+	emergency_scan_progress.custom_minimum_size = Vector2(350, 20)
+	emergency_scan_progress.max_value = 100
+	content.add_child(emergency_scan_progress)
+	var activate := Button.new()
+	activate.text = t("Activate and scan", "启动并扫描")
+	UIFactory.style_win10_button(activate)
+	activate.pressed.connect(start_emergency_scan.bind(activate))
+	content.add_child(activate)
+	emergency_actions = VBoxContainer.new()
+	emergency_actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_child(emergency_actions)
+	emergency_scan_timer = Timer.new()
+	emergency_scan_timer.wait_time = 0.10
+	emergency_scan_timer.timeout.connect(advance_emergency_scan)
+	add_child(emergency_scan_timer)
+
+func start_emergency_scan(activate_button: Button) -> void:
+	activate_button.disabled = true
+	emergency_scan_progress.value = 0
+	emergency_scan_status.text = t("Scanning protected files and running processes…", "正在扫描受保护的文件和运行中的进程……")
+	emergency_scan_timer.start()
+
+func advance_emergency_scan() -> void:
+	if not is_instance_valid(emergency_scan_progress):
+		emergency_scan_timer.stop()
+		return
+	emergency_scan_progress.value += 5
+	if emergency_scan_progress.value < 100:
+		return
+	emergency_scan_timer.stop()
+	emergency_scan_status.text = t("Persistent threat detected: host_service.exe", "检测到顽固威胁：host_service.exe")
+	emergency_scan_status.add_theme_color_override("font_color", UIFactory.color("#c42b1c"))
+	var clean := Button.new()
+	clean.text = t("Clean and repair", "清除并修复")
+	UIFactory.style_win10_button(clean)
+	clean.pressed.connect(confirm_emergency_cleanup)
+	emergency_actions.add_child(clean)
+
+func confirm_emergency_cleanup() -> void:
+	var dialog := ConfirmationDialog.new()
+	dialog.title = t("Confirm cleanup", "确认清理")
+	dialog.dialog_text = t(
+		"Remove the persistent threat and repair Super Security?",
+		"是否清除顽固威胁并修复 Super Security？"
+	)
+	dialog.get_ok_button().text = t("Clean now", "立即清理")
+	dialog.get_cancel_button().text = t("Cancel", "取消")
+	dialog.confirmed.connect(complete_emergency_cleanup)
+	add_child(dialog)
+	dialog.popup_centered()
+
+func complete_emergency_cleanup() -> void:
+	remove_virtual_item_recursive(MALWARE_FOLDER)
+	for item in fs_items.values():
+		if item.has("children"):
+			item.children.erase(MALWARE_FOLDER)
+	remove_malware_process()
+	firewall_enabled = true
+	virus_protection_enabled = true
+	emergency_scan_status.text = t(
+		"Threat removed. Super Security has been repaired.",
+		"威胁已清除。Super Security 已修复。"
+	)
+	emergency_scan_status.add_theme_color_override("font_color", UIFactory.color("#16833b"))
+	for child in emergency_actions.get_children():
+		child.queue_free()
+	stage_completed.emit()
 
 func on_antivirus_protection_changed(firewall: bool, virus_protection: bool) -> void:
 	firewall_enabled = firewall
